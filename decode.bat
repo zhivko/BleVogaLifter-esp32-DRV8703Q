@@ -1,0 +1,1 @@
+java -jar EspStackTraceDecoder.jar c:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q\xtensa-lx106-elf-addr2line.exe c:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q\.pioenvs\esp32dev\firmware.elf c:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q\dump.txt

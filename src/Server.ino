@@ -1,10 +1,8 @@
 #include <WiFi.h>
 #include <SPI.h>
 
-//const char* ssid     = "AsusKZ";
-//const char* password = "Doitman1";
-const char* ssid     = "AndroidAP";
-const char* password = "Doitman1";
+const char* ssid     = "***";
+const char* password = "***";
 
 WiFiServer server(80);
 
@@ -27,6 +25,9 @@ void setup()
     hspi = new SPIClass(HSPI);
     Serial.println("initialise vspi with default pins 2...");
     hspi->begin(5,6,7,8);
+    // VSPI - SCLK = 18, MISO = 19, MOSI = 23, SS = 5
+    // begin(int8_t sck=-1, int8_t miso=-1, int8_t mosi=-1, int8_t ss=-1);
+    hspi->begin(18,19,23,5);
     Serial.println("initialise vspi with default pins 3...");
 
     delay(10);

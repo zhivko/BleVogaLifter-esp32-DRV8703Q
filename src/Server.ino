@@ -12,6 +12,26 @@ uint16_t toTransfer;
 //uninitalised pointers to SPI objects
 SPIClass * hspi = NULL;
 
+// use 13 bit precission for LEDC timer
+#define LEDC_TIMER_13_BIT  13
+
+// use 5000 Hz as a LEDC base frequency
+#define LEDC_BASE_FREQ 5000
+
+// fade LED PIN (replace with LED_BUILTIN constant for built-in LED)
+#define LED_PIN 5
+
+// use first channel of 16 channels (started from zero)
+#define LEDC_CHANNEL_0 0
+
+void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 255) {
+  // calculate duty, 8191 from 2 ^ 13 - 1
+  uint32_t duty = (8191 / valueMax) * min(value, valueMax);
+
+  // write duty to LEDC
+  ledcWrite(channel, duty);
+}
+
 void setup()
 {
 
@@ -24,16 +44,19 @@ void setup()
     Serial.println("initialise vspi with default pins 1...");
     hspi = new SPIClass(HSPI);
     Serial.println("initialise vspi with default pins 2...");
-    hspi->begin(5,6,7,8);
     // VSPI - SCLK = 18, MISO = 19, MOSI = 23, SS = 5
     // begin(int8_t sck=-1, int8_t miso=-1, int8_t mosi=-1, int8_t ss=-1);
-    hspi->begin(18,19,23,5);
+    hspi->begin(18,19,23,33);
     Serial.println("initialise vspi with default pins 3...");
 
     delay(10);
 
-    // We start by connecting to a WiFi network
 
+    Serial.println("initialise ledc...");
+    ledcSetup(LEDC_CHANNEL_0, LEDC_BASE_FREQ, LEDC_TIMER_13_BIT);
+    ledcAttachPin(LED_PIN, LEDC_CHANNEL_0);
+
+    // We start by connecting to a WiFi network
     Serial.println();
     Serial.println();
     Serial.print("Connecting to ");

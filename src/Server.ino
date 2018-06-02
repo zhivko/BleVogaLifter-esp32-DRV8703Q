@@ -28,7 +28,7 @@ SPIClass * hspi = NULL;
 int brightness = 0; // how bright the LED is
 int fadeAmount = 1; // how many points to fade the LED by
 
-void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 255) {
+void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 1024) {
   // calculate duty, 8191 from 2 ^ 13 - 1
   uint32_t duty = (8191 / valueMax) * _min(value, valueMax);
 
@@ -44,6 +44,11 @@ void setup()
     pinMode(33, OUTPUT);
     pinMode(25, OUTPUT);
 
+    Serial.println("initialise ledc...");
+    ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_TIMER_10_BIT);
+    ledcAttachPin(LED_BUILTIN, LEDC_CHANNEL_0);
+
+/*
     //initialise vspi with default pins
     Serial.println("initialise vspi with default pins 1...");
     hspi = new SPIClass(HSPI);
@@ -55,10 +60,6 @@ void setup()
 
     delay(10);
 
-
-    Serial.println("initialise ledc...");
-    ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_TIMER_10_BIT);
-    ledcAttachPin(LED_BUILTIN, LEDC_CHANNEL_0);
 
     // We start by connecting to a WiFi network
     Serial.println();
@@ -78,7 +79,8 @@ void setup()
     Serial.println("IP address: ");
     Serial.println(WiFi.localIP());
 
-    server.begin();
+    //server.begin();
+    */
 
 }
 
@@ -155,18 +157,13 @@ void checkWifiClient()
 }
 
 void loop(){
-
   // set the brightness on LEDC channel 0
-  ledcAnalogWrite(LEDC_CHANNEL_0, brightness);
-
+  ledcAnalogWrite(LEDC_CHANNEL_0, brightness, 1024);
   // change the brightness for next time through the loop:
   brightness = brightness + fadeAmount;
-
   // reverse the direction of the fading at the ends of the fade:
   if (brightness <= 0 || brightness >= 1024) {
     fadeAmount = -fadeAmount;
   }
-
-  //checkWifiClient();
-
+  usleep(10);
 }

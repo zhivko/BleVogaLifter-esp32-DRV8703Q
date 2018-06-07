@@ -18,7 +18,7 @@ static const int spiClk = 1000000; // 1 MHz
 uint16_t toTransfer;
 
 //uninitalised pointers to SPI objects
-SPIClass * hspi = NULL;
+SPIClass * vspi = NULL;
 
 // use 13 bit precission for LEDC timer
 #define LEDC_TIMER_10_BIT  10
@@ -52,8 +52,6 @@ void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 1024) 
 
 void setup()
 {
-
-
     Serial.begin(115200);
     pinMode(PWM1_PIN, OUTPUT);
     pinMode(PWM2_PIN, OUTPUT);
@@ -62,17 +60,15 @@ void setup()
 
     //initialise vspi with default pins
     Serial.println("initialise vspi with default pins 1...");
-    hspi = new SPIClass(HSPI);
+    vspi = new SPIClass(VSPI);
     Serial.println("initialise vspi with default pins 2...");
     // VSPI - SCLK = 18, MISO = 19, MOSI = 23, SS = 5
     // begin(int8_t sck=-1, int8_t miso=-1, int8_t mosi=-1, int8_t ss=-1);
-    hspi->begin(18,19,23,33);
+    vspi->begin(18,19,23,33);
     Serial.println("initialise vspi with default pins 3...");
 
     pinMode(33, OUTPUT); //VSPI SS
-
     delay(10);
-
 
     Serial.println("initialise ledc...");
     ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_TIMER_10_BIT);
@@ -129,10 +125,25 @@ void setup()
          else if (error == OTA_END_ERROR) Serial.println("End Failed");
        });
        ArduinoOTA.begin();
-
 }
 
 int value = 0;
+
+void testSpi()
+{
+  usleep(10);
+  // SPI WRITE
+  vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE0));
+  //byte stuff = 0b11001100;
+  //hspi->transfer(stuff);
+  digitalWrite(33, LOW);
+  toTransfer = 0b11001100 << 8;
+  toTransfer |= 0b11001100 ;
+  vspi->transfer16(toTransfer);
+  digitalWrite(33, HIGH);
+  vspi->endTransaction();
+  usleep(10);
+}
 
 void checkWifiClient()
 {
@@ -180,25 +191,11 @@ void checkWifiClient()
            Serial.println("\nHigh.");
          }
          if (currentLine.endsWith("GET /L")) {
-           Serial.println("\nSPI Start.");
+           //Serial.println("\nSPI Start.");
            //digitalWrite(33, LOW);
-           usleep(10);
-           // SPI WRITE
-           hspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE0));
-           //byte stuff = 0b11001100;
-           //hspi->transfer(stuff);
-           digitalWrite(33, LOW);
-           toTransfer = 0b11001100 << 8;
-           toTransfer |= 0b11001100 ;
-           hspi->transfer16(toTransfer);
-           digitalWrite(33, HIGH);
-           hspi->endTransaction();
+           testSpi();
 
-           usleep(10);
-
-           //digitalWrite(33, HIGH);
-
-           Serial.println("SPI Done.");
+           //Serial.println("SPI Done.");
          }
          if (currentLine.endsWith("GET /UP")) {
            if(brightness>=10)
@@ -224,25 +221,12 @@ void checkWifiClient()
      // close the connection:
      client.stop();
      Serial.println("Client Disconnected.");
-}
+   }
 }
 
 void loop(){
-
-/*
-  // set the brightness on LEDC channel 0
-  ledcAnalogWrite(LEDC_CHANNEL_0, brightness);
-
-  // change the brightness for next time through the loop:
-  brightness = brightness + fadeAmount;
-
-  // reverse the direction of the fading at the ends of the fade:
-  if (brightness <= 0 || brightness >= 1024) {
-    fadeAmount = -fadeAmount;
-  }
-*/
-  checkWifiClient();
+  testSpi();
+  //checkWifiClient();
   ArduinoOTA.handle();
-
-
+  usleep(1000);
 }

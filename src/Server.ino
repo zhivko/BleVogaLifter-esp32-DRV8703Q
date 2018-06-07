@@ -1,12 +1,14 @@
 #include <WiFi.h>
 #include <SPI.h>
+#include <ArduinoOTA.h>
 
+// SET PLATFORMIO_BUILD_FLAGS='-DWIFI_PASS="My password"' '-DWIFI_SSID="My ssid name"'
 /*
 #ifndef WIFI_PASS
-#define WIFI_PASS "***"
+#define WIFI_PASS "Defined in environment variable PLATFORMIO_BUILD_FLAGS"
 #endif
 #ifndef WIFI_SID
-#define WIFI_SSID "***"
+#define WIFI_SSID  "Defined in environment variable PLATFORMIO_BUILD_FLAGS"
 #endif
 */
 
@@ -25,16 +27,22 @@ SPIClass * hspi = NULL;
 #define LEDC_BASE_FREQ 5000
 
 // fade LED PIN (replace with LED_BUILTIN constant for built-in LED)
-#define LED_PIN 5
-#define LED_BUILTIN 5
+#define PWM1_PIN 12
+#define PWM2_PIN 14
+#define PWM3_PIN 26
+#define PWM4_PIN 27
 
 // use first channel of 16 channels (started from zero)
 #define LEDC_CHANNEL_0 0
+#define LEDC_CHANNEL_1 1
+#define LEDC_CHANNEL_2 2
+#define LEDC_CHANNEL_3 3
+
 
 int brightness = 0; // how bright the LED is
 int fadeAmount = 1; // how many points to fade the LED by
 
-void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 255) {
+void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 1024) {
   // calculate duty, 8191 from 2 ^ 13 - 1
   uint32_t duty = (8191 / valueMax) * _min(value, valueMax);
 
@@ -47,8 +55,10 @@ void setup()
 
 
     Serial.begin(115200);
-    pinMode(33, OUTPUT);
-    pinMode(25, OUTPUT);
+    pinMode(PWM1_PIN, OUTPUT);
+    pinMode(PWM2_PIN, OUTPUT);
+    pinMode(PWM3_PIN, OUTPUT);
+    pinMode(PWM4_PIN, OUTPUT);
 
     //initialise vspi with default pins
     Serial.println("initialise vspi with default pins 1...");
@@ -59,12 +69,20 @@ void setup()
     hspi->begin(18,19,23,33);
     Serial.println("initialise vspi with default pins 3...");
 
+    pinMode(33, OUTPUT); //VSPI SS
+
     delay(10);
 
 
     Serial.println("initialise ledc...");
     ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_TIMER_10_BIT);
-    ledcAttachPin(LED_BUILTIN, LEDC_CHANNEL_0);
+    ledcSetup(LEDC_CHANNEL_1, 20000, LEDC_TIMER_10_BIT);
+    ledcSetup(LEDC_CHANNEL_2, 20000, LEDC_TIMER_10_BIT);
+    ledcSetup(LEDC_CHANNEL_3, 20000, LEDC_TIMER_10_BIT);
+    ledcAttachPin(PWM1_PIN, LEDC_CHANNEL_0);
+    ledcAttachPin(PWM2_PIN, LEDC_CHANNEL_1);
+    ledcAttachPin(PWM3_PIN, LEDC_CHANNEL_2);
+    ledcAttachPin(PWM4_PIN, LEDC_CHANNEL_3);
 
     // We start by connecting to a WiFi network
     Serial.println();
@@ -85,6 +103,32 @@ void setup()
     Serial.println(WiFi.localIP());
 
     server.begin();
+
+    ArduinoOTA.onStart([]() {
+         String type;
+         if (ArduinoOTA.getCommand() == U_FLASH)
+           type = "sketch";
+         else // U_SPIFFS
+           type = "filesystem";
+
+         // NOTE: if updating SPIFFS this would be the place to unmount SPIFFS using SPIFFS.end()
+         Serial.println("Start updating " + type);
+       });
+       ArduinoOTA.onEnd([]() {
+         Serial.println("\nEnd");
+       });
+       ArduinoOTA.onProgress([](unsigned int progress, unsigned int total) {
+         Serial.printf("Progress: %u%%\r", (progress / (total / 100)));
+       });
+       ArduinoOTA.onError([](ota_error_t error) {
+         Serial.printf("Error[%u]: ", error);
+         if (error == OTA_AUTH_ERROR) Serial.println("Auth Failed");
+         else if (error == OTA_BEGIN_ERROR) Serial.println("Begin Failed");
+         else if (error == OTA_CONNECT_ERROR) Serial.println("Connect Failed");
+         else if (error == OTA_RECEIVE_ERROR) Serial.println("Receive Failed");
+         else if (error == OTA_END_ERROR) Serial.println("End Failed");
+       });
+       ArduinoOTA.begin();
 
 }
 
@@ -115,6 +159,8 @@ void checkWifiClient()
              // the content of the HTTP response follows the header:
              client.print("Click <a href=\"/H\">here</a> to turn the LED on pin 5 on.<br>");
              client.print("Click <a href=\"/L\">here</a> to turn the LED on pin 5 off.<br>");
+             client.print("Click <a href=\"/UP\">faster</a> to pwm duty UP<br>");
+             client.print("Click <a href=\"/DOWN\">here</a>  to pwm duty DOWN<br>");
 
              // The HTTP response ends with another blank line:
              client.println();
@@ -131,26 +177,48 @@ void checkWifiClient()
          if (currentLine.endsWith("GET /H")) {
            digitalWrite(33, HIGH);               // GET /H turns the LED on
            digitalWrite(25, HIGH);
-           Serial.println("High.");
+           Serial.println("\nHigh.");
          }
          if (currentLine.endsWith("GET /L")) {
-           Serial.println("SPI Start.");
-           digitalWrite(33, LOW);
-
+           Serial.println("\nSPI Start.");
+           //digitalWrite(33, LOW);
+           usleep(10);
            // SPI WRITE
            hspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE0));
            //byte stuff = 0b11001100;
            //hspi->transfer(stuff);
-
+           digitalWrite(33, LOW);
            toTransfer = 0b11001100 << 8;
            toTransfer |= 0b11001100 ;
            hspi->transfer16(toTransfer);
-
            digitalWrite(33, HIGH);
            hspi->endTransaction();
 
+           usleep(10);
+
+           //digitalWrite(33, HIGH);
+
            Serial.println("SPI Done.");
          }
+         if (currentLine.endsWith("GET /UP")) {
+           if(brightness>=10)
+           {
+            brightness = brightness - 10;
+            ledcAnalogWrite(LEDC_CHANNEL_0, brightness, 1024);
+            Serial.print("duty= ");
+            Serial.println(brightness);
+           }
+         }
+         if (currentLine.endsWith("GET /DOWN")) {
+           if(brightness<=(1024-10))
+           {
+            brightness = brightness + 10;
+            ledcAnalogWrite(LEDC_CHANNEL_0, brightness, 1024);
+            Serial.print("duty= ");
+            Serial.println(brightness);
+          }
+         }
+
        }
      }
      // close the connection:
@@ -174,5 +242,7 @@ void loop(){
   }
 */
   checkWifiClient();
+  ArduinoOTA.handle();
+
 
 }

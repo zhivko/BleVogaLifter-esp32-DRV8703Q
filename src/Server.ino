@@ -194,6 +194,13 @@ void checkWifiClient()
            //Serial.println("\nSPI Start.");
            //digitalWrite(33, LOW);
            testSpi();
+           usleep(100);
+           testSpi();
+           usleep(100);
+           testSpi();
+           usleep(100);
+           testSpi();
+           usleep(100);
 
            //Serial.println("SPI Done.");
          }
@@ -225,8 +232,8 @@ void checkWifiClient()
 }
 
 void loop(){
-  testSpi();
-  //checkWifiClient();
+  //testSpi();
+  checkWifiClient();
   ArduinoOTA.handle();
   usleep(1000);
 }

@@ -46,7 +46,7 @@
 	  {
 	  	if (location.host != "")
 	  	{
-			var wsUri = "ws://" + location.host + "/";
+			var wsUri = "ws://" + location.host + "/ws";
 			//var wsUri = "ws://192.168.1.24/";
 			websocket = new WebSocket(wsUri);
 			websocket.onopen = function(evt) { onOpen(evt) };

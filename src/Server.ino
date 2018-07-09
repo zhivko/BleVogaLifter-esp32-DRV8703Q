@@ -1,4 +1,4 @@
-  // platformio run --target uploadfs
+// platformio run --target uploadfs
 // C:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q>c:\Python27\python.exe c:\Users\klemen\.platformio\packages\framework-arduinoespressif32\tools\esptool.py --chip esp32 --port COM3 --baud 115200 --before default_reset --after hard_reset erase_flash
 #include <WiFi.h>
 #include <FS.h>
@@ -31,10 +31,6 @@ int shouldStop=0;
 int shouldPwmUp = 0;
 int shouldPwmDown = 0;
 
-
-#define reason2str(r) ((r>176)?system_event_reasons[r-176]:system_event_reasons[r-1])
-
-
 // use 13 bit precission for LEDC timer
 #define LEDC_TIMER_10_BIT  10
 // use 5000 Hz as a LEDC base frequency
@@ -45,13 +41,18 @@ int shouldPwmDown = 0;
 #define PWM3_PIN GPIO_NUM_26
 #define PWM4_PIN GPIO_NUM_27
 #define LED_PIN GPIO_NUM_2
+
+#define LEDC_RESOLUTION LEDC_TIMER_10_BIT
+#define pwmValueMax  2^LEDC_RESOLUTION
+
 // use first channel of 16 channels (started from zero)
 #define LEDC_CHANNEL_0 0
 #define LEDC_CHANNEL_1 1
 #define LEDC_CHANNEL_2 2
 #define LEDC_CHANNEL_3 3
 #define SS1 33
-#define pwmValueMax  2000
+#define SS2 25
+
 
 int brightness = 0; // how bright the LED is
 int fadeAmount = 1; // how many points to fade the LED by
@@ -61,13 +62,22 @@ String status2;
 int motor1_pos;
 int motor2_pos;
 
+hw_timer_t * timer = NULL;
+volatile SemaphoreHandle_t timerSemaphore;
+portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
+volatile uint32_t isrCounter = 0;
+volatile uint32_t lastIsrAt = 0;
 
-void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 1024) {
+
+void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = pwmValueMax) {
+  /*
   // calculate duty, 8191 from 2 ^ 13 - 1
   uint32_t duty = (8191 / valueMax) * _min(value, valueMax);
 
   // write duty to LEDC
   ledcWrite(channel, duty);
+  */
+  ledcWrite(channel, _min(value, valueMax));
 }
 
 
@@ -152,7 +162,7 @@ void testSpi()
   usleep(1);
   if(reply == B00011000)
   {
-    status1 = "DRV8703Q is ON (Not locked)";
+    status1.concat("DRV8703Q is ON (Not locked)");
   }
 
   usleep(1);
@@ -182,37 +192,33 @@ void testSpi()
   Serial.print("SPI reply: ");
   Serial.println(reply, BIN);
 
-  if((reply & FAULT_FAULT) > 0)
-  {
-    //Serial.println("fault");
-  }
   if((reply & FAULT_WDFLT) > 0)
   {
-    status1 = "Watchdog time-out fault";
+    status1.concat("Watchdog time-out fault");
   }
   if((reply & FAULT_GDF) > 0)
   {
-    status1 = "Gate drive fault";
+    status1.concat("Gate drive fault");
   }
   if((reply & FAULT_OCP) > 0)
   {
-    status1 = "VDS monitor overcurrent fault";
+    status1.concat("VDS monitor overcurrent fault");
   }
   if((reply & FAULT_VM_UVFL) > 0)
   {
-    status1 = "VM undervoltage lockout fault";
+    status1.concat("VM undervoltage lockout fault");
   }
   if((reply & FAULT_VCP_UVFL) > 0)
   {
-    status1 = "Charge-pump undervoltage fault";
+    status1.concat("Charge-pump undervoltage fault");
   }
   if((reply & FAULT_OTSD) > 0)
   {
-    status1 = "Overtemperature shutdown";
+    status1.concat("Overtemperature shutdown");
   }
   if((reply & FAULT_OTW) > 0)
   {
-    status1 = "Overtemperature warning";
+    status1.concat("Overtemperature warning");
   }
 }
 
@@ -220,25 +226,6 @@ void pwmStop()
 {
   brightness = 0;
   ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
-}
-
-void pwmUp(){
-  if(brightness<=(pwmValueMax-1))
-  {
-    brightness = brightness + 1;
-    ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
-  }
-}
-
-void pwmDown()
-{
-  if(brightness>=1)
-  {
-   brightness = brightness - 1;
-   ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
-  }
-  Serial.print("duty= ");
-  Serial.println(brightness);
 }
 
 String scanNetworks(){
@@ -470,12 +457,9 @@ void setup(){
   Serial.print("ESP ChipSize:");
   Serial.println(ESP.getFlashChipSize());
 
-  pinMode(PWM1_PIN, OUTPUT);
-  pinMode(PWM2_PIN, OUTPUT);
-  pinMode(PWM3_PIN, OUTPUT);
-  pinMode(PWM4_PIN, OUTPUT);
-
   pinMode(LED_PIN, OUTPUT);
+  pinMode(SS1, OUTPUT); // Slave select first gate driver
+  pinMode(SS2, OUTPUT); // Slave select second gate driver
 
   blink(1);
   //initialise vspi with default pins
@@ -486,13 +470,12 @@ void setup(){
   vspi->begin(18,19,23,SS1);
   Serial.println("initialise vspi with default pins 3...");
 
-  pinMode(SS1, OUTPUT); //VSPI SS
   delay(10);
   Serial.println("initialise ledc...");
-  ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_TIMER_10_BIT);
-  ledcSetup(LEDC_CHANNEL_1, 20000, LEDC_TIMER_10_BIT);
-  ledcSetup(LEDC_CHANNEL_2, 20000, LEDC_TIMER_10_BIT);
-  ledcSetup(LEDC_CHANNEL_3, 20000, LEDC_TIMER_10_BIT);
+  ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_RESOLUTION);
+  ledcSetup(LEDC_CHANNEL_1, 20000, LEDC_RESOLUTION);
+  ledcSetup(LEDC_CHANNEL_2, 20000, LEDC_RESOLUTION);
+  ledcSetup(LEDC_CHANNEL_3, 20000, LEDC_RESOLUTION);
   ledcAttachPin(PWM1_PIN, LEDC_CHANNEL_0);
   ledcAttachPin(PWM2_PIN, LEDC_CHANNEL_1);
   ledcAttachPin(PWM3_PIN, LEDC_CHANNEL_2);
@@ -515,19 +498,10 @@ void setup(){
   WiFi.begin(ssid.c_str(), password.c_str());
   waitForIp();
 
-  server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial.println("/status");
-    testSpi();
-    request->send(200, "text/plain", status1);
-  });
-  server.on("/up", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial.println("/up");
-    pwmUp();
-    request->send(200, "text/plain", "Hello World");
-  });
-  server.on("/down", HTTP_GET, [](AsyncWebServerRequest *request){
-    Serial.println("/down");
-    request->send(200, "text/plain", "Hello World");
+  server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
+    Serial.println("/");
+    Serial.println("redirecting to /index.html");
+    request->redirect("/index.html");
   });
 
   if(!SPIFFS.begin()){
@@ -544,13 +518,33 @@ void setup(){
   server.begin();
   ArduinoOTA.begin();
 
+/*
   xTaskCreate(
-                    taskOne,          /* Task function. */
-                    "TaskOne",        /* String with name of task. */
-                    10000,            /* Stack size in words. */
-                    NULL,             /* Parameter passed as input of the task */
-                    1,                /* Priority of the task. */
-                    NULL);            /* Task handle. */
+                    taskOne,          // Task function. 
+                    "TaskOne",        // String with name of task. 
+                    10000,            // Stack size in words. 
+                    NULL,             // Parameter passed as input of the task 
+                    1,                // Priority of the task.
+                    NULL);            // Task handle. 
+*/
+
+  // Create semaphore to inform us when the timer has fired
+  timerSemaphore = xSemaphoreCreateBinary();
+
+  // Use 1st timer of 4 (counted from zero).
+  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
+  // info).
+  timer = timerBegin(0, 80, true);
+
+  // Attach onTimer function to our timer.
+  timerAttachInterrupt(timer, &onTimer, true);
+
+  // Set alarm to call onTimer function every 10ms (value in microseconds).
+  // Repeat the alarm (third parameter)
+  timerAlarmWrite(timer, 10000, true);    // 10000 us = 10ms
+
+  // Start an alarm
+  timerAlarmEnable(timer);
 
   blink(5);
 
@@ -558,22 +552,51 @@ void setup(){
 
 void loop(){
   ArduinoOTA.handle();
-  sleep(4);
+  sleep(10);
+
+/*
+  if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){
+    uint32_t isrCount = 0, isrTime = 0;
+    // Read the interrupt count and time
+    portENTER_CRITICAL(&timerMux);
+    isrCount = isrCounter;
+    isrTime = lastIsrAt;
+    portEXIT_CRITICAL(&timerMux);
+    // Print it
+    Serial.print("onTimer no. ");
+    Serial.print(isrCount);
+    Serial.print(" at ");
+    Serial.print(isrTime);
+    Serial.println(" ms");
+  }
+*/
+
 }
 
-void taskOne( void * parameter )
-{
-  while(true)
+void IRAM_ATTR onTimer(){
+  // Increment the counter and set the time of ISR
+  portENTER_CRITICAL_ISR(&timerMux);
+  isrCounter++;
+  lastIsrAt = millis();
+  portEXIT_CRITICAL_ISR(&timerMux);
+  // Give a semaphore that we can check in the loop
+  xSemaphoreGiveFromISR(timerSemaphore, NULL);
+  // It is safe to use digitalRead/Write here if you want to toggle an output
+  if(shouldPwmUp == 1 && shouldStop != 1)
   {
-      if(shouldPwmUp == 1 && shouldStop != 1)
-      {
-        pwmUp();
-        usleep(100);
-      }
-      if(shouldPwmDown == 1 && shouldStop != 1)
-      {
-        pwmDown();
-        usleep(100);
-      }
+    if(brightness<=(pwmValueMax-1))
+    {
+      brightness = brightness + 1;
+      ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
+    }
   }
+
+  if(shouldPwmDown == 1 && shouldStop != 1)
+  {
+    if(brightness>=1)
+    {
+      brightness = brightness - 1;
+      ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
+    }
+  }  
 }

@@ -1,5 +1,5 @@
-// platformio run --target uploadfs
-
+  // platformio run --target uploadfs
+// C:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q>c:\Python27\python.exe c:\Users\klemen\.platformio\packages\framework-arduinoespressif32\tools\esptool.py --chip esp32 --port COM3 --baud 115200 --before default_reset --after hard_reset erase_flash
 #include <WiFi.h>
 #include <FS.h>
 #include "SPIFFS.h"
@@ -10,26 +10,41 @@
 #include <stdint.h>
 
 
-const char* ssid = "AndroidAP";
-const char* password =  "Doitman1";
+String ssid("AsusKZ");
+String password("Doitman1");
+
+char* softAP_ssid = "MLIFT";
+char* softAP_password = "Doitman1";
+
 AsyncWebServer server(80);
 AsyncWebSocket ws("/ws"); // access at ws://[esp ip]/ws
+const char * mysystem_event_names[] = { "WIFI_READY", "SCAN_DONE", "STA_START", "STA_STOP", "STA_CONNECTED", "STA_DISCONNECTED", "STA_AUTHMODE_CHANGE", "STA_GOT_IP", "STA_LOST_IP", "STA_WPS_ER_SUCCESS", "STA_WPS_ER_FAILED", "STA_WPS_ER_TIMEOUT", "STA_WPS_ER_PIN", "AP_START", "AP_STOP", "AP_STACONNECTED", "AP_STADISCONNECTED", "AP_PROBEREQRECVED", "GOT_IP6", "ETH_START", "ETH_STOP", "ETH_CONNECTED", "ETH_DISCONNECTED", "ETH_GOT_IP", "MAX"};
 
+int NO_AP_FOUND_count = 0;
 
 static const int spiClk = 1000000; // 1 MHz
 uint16_t toTransfer;
 //uninitalised pointers to SPI objects
 SPIClass * vspi = NULL;
 
+int shouldStop=0;
+int shouldPwmUp = 0;
+int shouldPwmDown = 0;
+
+
+#define reason2str(r) ((r>176)?system_event_reasons[r-176]:system_event_reasons[r-1])
+
+
 // use 13 bit precission for LEDC timer
 #define LEDC_TIMER_10_BIT  10
 // use 5000 Hz as a LEDC base frequency
 #define LEDC_BASE_FREQ 5000
 // fade LED PIN (replace with LED_BUILTIN constant for built-in LED)
-#define PWM1_PIN 12
-#define PWM2_PIN 14
-#define PWM3_PIN 26
-#define PWM4_PIN 27
+#define PWM1_PIN GPIO_NUM_12
+#define PWM2_PIN GPIO_NUM_14
+#define PWM3_PIN GPIO_NUM_26
+#define PWM4_PIN GPIO_NUM_27
+#define LED_PIN GPIO_NUM_2
 // use first channel of 16 channels (started from zero)
 #define LEDC_CHANNEL_0 0
 #define LEDC_CHANNEL_1 1
@@ -43,6 +58,8 @@ int fadeAmount = 1; // how many points to fade the LED by
 
 String status1;
 String status2;
+int motor1_pos;
+int motor2_pos;
 
 
 void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 1024) {
@@ -52,6 +69,8 @@ void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = 1024) 
   // write duty to LEDC
   ledcWrite(channel, duty);
 }
+
+
 
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
@@ -85,6 +104,26 @@ void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     }
 }
 
+void clearFault()
+{
+  digitalWrite(SS1, LOW);
+  // SPI WRITE
+  vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
+
+  byte data_read = B00000000;  // WRITE OPERATION
+  byte data_address = B00010000; // ADDRES 02x MAIN REGISTER
+  byte data = data_read | data_address;
+
+  uint16_t data_int = data << 8 | B00000001;  // B00000001 ... CLR_FLT
+                                              // B00000010 ... IN2/EN
+                                              // B00000100 ... IN1/PH
+                                              // B00111000 ... LOCK
+
+  uint16_t reply = vspi->transfer16(data_int);  // should return 0x18 B00011000
+  vspi->endTransaction();
+  digitalWrite(SS1, HIGH);
+}
+
 void testSpi()
 {
   //SPI_MODE0, ..., SPI_MODE3
@@ -113,7 +152,7 @@ void testSpi()
   usleep(1);
   if(reply == B00011000)
   {
-    status1 = "DRV8703Q is ON (Not locked).";
+    status1 = "DRV8703Q is ON (Not locked)";
   }
 
   usleep(1);
@@ -140,7 +179,8 @@ void testSpi()
   vspi->endTransaction();
   digitalWrite(SS1, HIGH);
   usleep(1);
-  //Serial.println(reply);
+  Serial.print("SPI reply: ");
+  Serial.println(reply, BIN);
 
   if((reply & FAULT_FAULT) > 0)
   {
@@ -176,6 +216,12 @@ void testSpi()
   }
 }
 
+void pwmStop()
+{
+  brightness = 0;
+  ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
+}
+
 void pwmUp(){
   if(brightness<=(pwmValueMax-1))
   {
@@ -193,6 +239,92 @@ void pwmDown()
   }
   Serial.print("duty= ");
   Serial.println(brightness);
+}
+
+String scanNetworks(){
+  String ret;
+  int n = WiFi.scanNetworks();
+  Serial.println("scan done");
+  if (n == 0) {
+    ret.concat("no networks found");
+  } else {
+    for (int i = 0; i < n; ++i) {
+        // Print SSID and RSSI for each network found
+        ret.concat("wifi ");
+        ret.concat(WiFi.SSID(i));
+        ret.concat(" (");
+        ret.concat(WiFi.RSSI(i));
+        ret.concat(") ");
+        ret.concat((WiFi.encryptionType(i) == WIFI_AUTH_OPEN)?"OPEN":"PASS");
+        ret.concat("\n");
+    }
+  }
+  Serial.println(ret.c_str());
+  return ret;
+}
+
+String getToken(String data, char separator, int index)
+{
+  int found = 0;
+  int strIndex[] = {0, -1};
+  int maxIndex = data.length()-1;
+
+  for(int i=0; i<=maxIndex && found<=index; i++){
+    if(data.charAt(i)==separator || i==maxIndex){
+        found++;
+        strIndex[0] = strIndex[1]+1;
+        strIndex[1] = (i == maxIndex) ? i+1 : i;
+    }
+  }
+
+  String ret("");
+  if(found>index)
+  {
+    ret = data.substring(strIndex[0], strIndex[1]);
+  }
+
+  return ret;
+}
+
+void processWsData(char *data, AsyncWebSocketClient* client)
+{
+  String input;
+  input.concat(data);
+  printf("received: %s",input.c_str());
+  if(input.equals(String("status")))
+  {
+    testSpi();
+    client->printf("motor1_pos %i", motor1_pos);
+    client->printf("motor2_pos %i", motor2_pos);
+    client->printf("status: %s %s", status1.c_str(), status2.c_str());
+  }else if(input.startsWith("clrflt")){
+    clearFault();
+    client->printf("Clear Fault done.");
+  }else if(input.startsWith("wificonnect")){
+    ssid = getToken(input, ' ', 1);
+    password = getToken(input, ' ', 2);
+    NO_AP_FOUND_count = 0;
+    printf("wificonnect %s %s", ssid.c_str(), password.c_str());
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(ssid.c_str(), password.c_str());
+    waitForIp();
+  }else if(input.startsWith("goup")){
+    shouldStop = 0;
+    shouldPwmUp = 1;
+    shouldPwmDown = 0;
+  }else if(input.startsWith("godown")){
+    shouldStop = 0;
+    shouldPwmUp = 0;
+    shouldPwmDown = 1;
+  }else if(input.startsWith("slowstop")){
+    shouldStop = 1;
+    shouldPwmUp = 0;
+    shouldPwmDown = 0;
+    pwmStop();
+  }else if(input.startsWith("scan")){
+    printf("scan");
+    client->printf(scanNetworks().c_str());
+  }
 }
 
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
@@ -213,25 +345,28 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
   } else if(type == WS_EVT_DATA){
     //data packet
     AwsFrameInfo * info = (AwsFrameInfo*)arg;
-    printf("Data came...");
     if(info->final && info->index == 0 && info->len == len){
       //the whole message is in a single frame and we got all of it's data
       printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
       if(info->opcode == WS_TEXT){
-        printf("Data11: ");
         data[len] = 0;
         printf("%s\n", (char*)data);
+        processWsData((char*)data, client);
       } else {
+        printf("not text\n");
         for(size_t i=0; i < info->len; i++){
           printf("%02x ", data[i]);
         }
         printf("\n");
       }
+      /*
       if(info->opcode == WS_TEXT)
         client->text("I got your text message");
       else
         client->binary("I got your binary message");
+      */
     } else {
+      printf("multi frames\n");
       //message is comprised of multiple frames or the frame is split into multiple packets
       if(info->index == 0){
         if(info->num == 0)
@@ -253,13 +388,80 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
         printf("ws[%s][%u] frame[%u] end[%llu]\n", server->url(), client->id(), info->num, info->len);
         if(info->final){
           printf("ws[%s][%u] %s-message end\n", server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
+/*
           if(info->message_opcode == WS_TEXT)
             client->text("I got your text message");
           else
             client->binary("I got your binary message");
+            */
         }
       }
     }
+  }
+}
+
+String processor(const String& var)
+{
+  if(var == "HELLO_FROM_TEMPLATE")
+    return F("Hello world!");
+  return String();
+}
+
+void waitForIp()
+{
+  while (WiFi.status() != WL_CONNECTED) {
+
+    delay(1000);
+    Serial.print("SSID: ");
+    Serial.println(ssid);
+    Serial.print("password: ");
+    Serial.println(password);
+    Serial.print("status: ");
+    Serial.println(WiFi.status());
+
+    Serial.print("no ap count count: ");
+    Serial.println(NO_AP_FOUND_count);
+
+    if(NO_AP_FOUND_count >= 2)
+    {
+      WiFi.mode(WIFI_AP);
+      if(WiFi.softAP(softAP_ssid, softAP_password))
+      {
+        Serial.println("Wait 100 ms for AP_START...");
+        delay(100);
+        Serial.println("");
+        IPAddress Ip(192, 168, 1, 1);
+        IPAddress NMask(255, 255, 255, 0);
+        WiFi.softAPConfig(Ip, Ip, NMask);
+        IPAddress myIP = WiFi.softAPIP();
+        Serial.println("Network " + String(softAP_ssid) + " is running.");
+        Serial.print("AP IP address: ");
+        Serial.println(myIP);
+      }
+      else
+      {
+        Serial.println("Starting AP failed.");
+      }
+      break;
+    }
+  }
+
+  Serial.print("status:");
+  Serial.println(WiFi.status());
+
+  Serial.print("WiFi local IP:");
+  Serial.println(WiFi.localIP());
+
+}
+
+void blink(int i)
+{
+  for(int j=0; j<i; j++)
+  {
+    digitalWrite(LED_PIN, HIGH);
+    usleep(50000);
+    digitalWrite(LED_PIN, LOW);
+    usleep(40000);
   }
 }
 
@@ -268,14 +470,50 @@ void setup(){
   Serial.print("ESP ChipSize:");
   Serial.println(ESP.getFlashChipSize());
 
-  WiFi.begin(ssid, password);
+  pinMode(PWM1_PIN, OUTPUT);
+  pinMode(PWM2_PIN, OUTPUT);
+  pinMode(PWM3_PIN, OUTPUT);
+  pinMode(PWM4_PIN, OUTPUT);
 
-  while (WiFi.status() != WL_CONNECTED) {
-    delay(1000);
-    Serial.println("Connecting to WiFi..");
-  }
+  pinMode(LED_PIN, OUTPUT);
 
-  Serial.println(WiFi.localIP());
+  blink(1);
+  //initialise vspi with default pins
+  Serial.println("initialise vspi with default pins 1...");
+  vspi = new SPIClass(VSPI);
+  // VSPI - SCLK = 18, MISO = 19, MOSI = 23, SS = 5
+  // begin(int8_t sck=-1, int8_t miso=-1, int8_t mosi=-1, int8_t ss=-1);
+  vspi->begin(18,19,23,SS1);
+  Serial.println("initialise vspi with default pins 3...");
+
+  pinMode(SS1, OUTPUT); //VSPI SS
+  delay(10);
+  Serial.println("initialise ledc...");
+  ledcSetup(LEDC_CHANNEL_0, 20000, LEDC_TIMER_10_BIT);
+  ledcSetup(LEDC_CHANNEL_1, 20000, LEDC_TIMER_10_BIT);
+  ledcSetup(LEDC_CHANNEL_2, 20000, LEDC_TIMER_10_BIT);
+  ledcSetup(LEDC_CHANNEL_3, 20000, LEDC_TIMER_10_BIT);
+  ledcAttachPin(PWM1_PIN, LEDC_CHANNEL_0);
+  ledcAttachPin(PWM2_PIN, LEDC_CHANNEL_1);
+  ledcAttachPin(PWM3_PIN, LEDC_CHANNEL_2);
+  ledcAttachPin(PWM4_PIN, LEDC_CHANNEL_3);
+
+  WiFiEventId_t eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
+          Serial.print("WiFi lost connection. Reason: ");
+          Serial.println(info.disconnected.reason);
+
+          String msg;
+          msg.concat(info.disconnected.reason);
+
+          if(msg.indexOf("201")>=0){
+            NO_AP_FOUND_count++;
+          }
+
+  }, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
+
+
+  WiFi.begin(ssid.c_str(), password.c_str());
+  waitForIp();
 
   server.on("/status", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial.println("/status");
@@ -294,7 +532,6 @@ void setup(){
 
   if(!SPIFFS.begin()){
       Serial.println("SPIFFS Mount Failed");
-      return;
   }
 
   listDir(SPIFFS, "/", 0);
@@ -302,15 +539,41 @@ void setup(){
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 
-  server.serveStatic("/", SPIFFS, "/");
-
-
+  server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=40");
 
   server.begin();
   ArduinoOTA.begin();
+
+  xTaskCreate(
+                    taskOne,          /* Task function. */
+                    "TaskOne",        /* String with name of task. */
+                    10000,            /* Stack size in words. */
+                    NULL,             /* Parameter passed as input of the task */
+                    1,                /* Priority of the task. */
+                    NULL);            /* Task handle. */
+
+  blink(5);
+
 }
 
 void loop(){
   ArduinoOTA.handle();
-  sleep(1);
+  sleep(4);
+}
+
+void taskOne( void * parameter )
+{
+  while(true)
+  {
+      if(shouldPwmUp == 1 && shouldStop != 1)
+      {
+        pwmUp();
+        usleep(100);
+      }
+      if(shouldPwmDown == 1 && shouldStop != 1)
+      {
+        pwmDown();
+        usleep(100);
+      }
+  }
 }

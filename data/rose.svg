@@ -12,7 +12,7 @@
    height="480"
    version="1.1"
    id="svg2"
-   inkscape:version="0.91 r13725"
+   inkscape:version="0.48.2 r9819"
    sodipodi:docname="rose.svg">
   <metadata
      id="metadata103">
@@ -34,27 +34,30 @@
      guidetolerance="10"
      inkscape:pageopacity="0"
      inkscape:pageshadow="2"
-     inkscape:window-width="1215"
-     inkscape:window-height="776"
+     inkscape:window-width="1536"
+     inkscape:window-height="801"
      id="namedview101"
      showgrid="false"
      inkscape:zoom="0.86170023"
      inkscape:cx="332.11164"
      inkscape:cy="184.19894"
-     inkscape:window-x="65"
-     inkscape:window-y="24"
+     inkscape:window-x="-8"
+     inkscape:window-y="-8"
      inkscape:window-maximized="1"
      inkscape:current-layer="svg2" />
   <use
      x="0"
      y="0"
      xlink:href="#PrinterCtl"
-     id="use99" />
+     id="use99"
+     transform="matrix(0.74109068,0,0,1,77.672797,0)"
+     width="600"
+     height="480" />
   <defs
      id="defs4">
     <style
        type="text/css"
-       id="style6"><![CDATA[
+       id="style6">
 
     text {
         font-family: helvetica;
@@ -113,7 +116,7 @@
         filter: url(#f1);
         }
 
-  ]]></style>
+  </style>
     <filter
        id="f1"
        x="-1"
@@ -156,7 +159,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set16" />
           </path>
         </g>
         <g
@@ -171,7 +175,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set20" />
           </path>
         </g>
         <g
@@ -186,7 +191,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set24" />
           </path>
         </g>
         <g
@@ -201,7 +207,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set28" />
           </path>
         </g>
       </g>
@@ -220,7 +227,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set33" />
           </path>
         </g>
         <g
@@ -235,7 +243,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set37" />
           </path>
         </g>
         <g
@@ -250,7 +259,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set41" />
           </path>
         </g>
         <g
@@ -265,7 +275,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set45" />
           </path>
         </g>
       </g>
@@ -284,7 +295,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set50" />
           </path>
         </g>
         <g
@@ -299,7 +311,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set54" />
           </path>
         </g>
         <g
@@ -314,7 +327,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set58" />
           </path>
         </g>
         <g
@@ -329,7 +343,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set62" />
           </path>
         </g>
       </g>
@@ -348,7 +363,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set67" />
           </path>
         </g>
         <g
@@ -363,7 +379,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set71" />
           </path>
         </g>
         <g
@@ -378,7 +395,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set75" />
           </path>
         </g>
         <g
@@ -393,7 +411,8 @@
                attributeName="fill"
                to="orange"
                begin="mouseover"
-               end="mouseout" />
+               end="mouseout"
+               id="set79" />
           </path>
         </g>
       </g>
@@ -410,7 +429,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set83" />
         </path>
       </g>
       <g
@@ -426,7 +446,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set87" />
         </path>
       </g>
       <g
@@ -444,7 +465,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set91" />
         </path>
       </g>
       <g
@@ -462,7 +484,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set95" />
         </path>
       </g>
       <g
@@ -480,7 +503,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set99" />
         </path>
       </g>
       <g
@@ -498,7 +522,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set103" />
         </path>
       </g>
       <g
@@ -516,7 +541,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set107" />
         </path>
       </g>
       <g
@@ -534,7 +560,8 @@
              attributeName="fill"
              to="orange"
              begin="mouseover"
-             end="mouseout" />
+             end="mouseout"
+             id="set111" />
         </path>
       </g>
     </symbol>
@@ -557,18 +584,18 @@
          height="40.617374"
          x="460.71707"
          y="177.11044" /></flowRegion><flowPara
-       id="flowPara3415"></flowPara></flowRoot>  <text
+       id="flowPara3415" /></flowRoot>  <text
      xml:space="preserve"
-     style="font-style:normal;font-weight:normal;font-size:30px;line-height:100%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"
-     x="438.66763"
-     y="214.24632"
+     style="font-size:30px;font-style:normal;font-weight:normal;line-height:100%;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;font-family:sans-serif"
+     x="444.47009"
+     y="207.28334"
      id="PositionY"
      sodipodi:linespacing="100%"
      inkscape:label="#text3417"><tspan
        sodipodi:role="line"
        id="tspan3419"
-       x="438.66763"
-       y="214.24632">20000</tspan></text>
+       x="444.47009"
+       y="207.28334">20000</tspan></text>
   <text
      xml:space="preserve"
      style="font-style:normal;font-weight:normal;font-size:30px;line-height:100%;font-family:sans-serif;letter-spacing:0px;word-spacing:0px;fill:#000000;fill-opacity:1;stroke:none;stroke-width:1px;stroke-linecap:butt;stroke-linejoin:miter;stroke-opacity:1"

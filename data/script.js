@@ -59,9 +59,6 @@
 	  {
 		writeToScreen("CONNECTED");
 		writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received: ' + evt.data+'</span>');
-		//setInterval(function() {
-		//	doSend("GiveMeData");
-		//}, 150);	
 	  }
 	  function onClose(evt)
 	  {
@@ -69,31 +66,36 @@
 	  }
 	  function onMessage(evt)
 	  {
-		writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received: ' + evt.data+'</span>');
-		var res = evt.data.split(' ');
-		if (evt.data.slice(0,1) == 'X' && res.length==5)
+		var allData = evt.data.split('\n');
+		for(i=0; i<allData.length; i++)
 		{
-			document.getElementById("roseSvg").contentDocument.getElementById('PositionX').textContent = res[0];
-			document.getElementById("roseSvg").contentDocument.getElementById('PositionY').textContent = res[1];
-			document.getElementById("roseSvg").contentDocument.getElementById('PositionZ').textContent = res[2];
-			document.getElementById("roseSvg").contentDocument.getElementById('PositionE').textContent = res[3];
-			if(endsWith(res[4],"1"))
-				document.getElementById("enableMotors").checked="checked";
+			if(allData[i].startsWith("wifi ", 0))
+			{
+				writeToScreen("<span id='wifi" + i +"'>" + allData[i].split(' ')[1] + "</span><input id='pass" + i + "' width='300px'></input><button onclick='wifiConnect(" + i + ")'>Connect</button>");
+			}
 			else
-				document.getElementById("enableMotors").checked="";
+			{
+				writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received: ' + allData[i] +'</span>');
+			}
 		}
-		else if(evt.data.slice(0,8) == 'Analogue')
+		var res = evt.data.split(' ');
+		if (res.length==2 && res[0] == 'motor1_pos')
 		{
-			document.getElementById('Analogue').textContent = res[1];
+			document.getElementById("motor1_pos").textContent = res[1];
 		}
-		else if(evt.data.slice(0,7) == 'Encoder')
-		{
-			document.getElementById('Encoder').textContent = res[1];
+		if (res.length==2 && res[0] == 'motor2_pos')
+		{		
+			document.getElementById("motor2_pos").textContent = res[1];
 		}
 	  }
 	  function onError(evt)
 	  {
 		writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
+	  }
+	  function wifiConnect(i)
+	  {
+		textToSend = "wificonnect " + document.getElementById("wifi" + i).textContent + " " + document.getElementById("pass" + i).value;
+		websocket.send(textToSend);
 	  }
 	  function doSend(element)
 	  {
@@ -101,18 +103,20 @@
 		textToSend = element.value;
 		websocket.send(textToSend);
 	  }
+	  function doSendParentElementId(element)
+	  {
+
+		if(websocket!=null)
+			websocket.send(element.id);
+	  }
 	  function doSendCommand(textToSend)
 	  {
+
 		if(websocket!=null)
 			websocket.send(textToSend);
 	  }
 	  function writeToScreen(message)
 	  {
-		// var pre = parent.document.createElement("p");
-		// pre.style.wordWrap = "break-word";
-		// pre.innerHTML = message;
-		// output.appendChild(pre);
-		
 		output.innerHTML = message + "<br>\n" + output.innerHTML;		
 	  }
 	  function doDisconnect()

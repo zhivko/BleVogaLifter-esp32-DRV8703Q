@@ -1,0 +1,22 @@
+assertion "heap != NULL && "free() target pointer is outside heap areas"" failed: file "/Users/ficeto/Desktop/ESP32/ESP32/esp-idf-public/components/heap/heap_caps.c", line 261, func
+tion: heap_caps_free
+abort() was called at PC 0x400e3deb on core 1
+
+Backtrace: 0x4009180c:0x3ffb1d60 0x40091a0f:0x3ffb1d80 0x400e3deb:0x3ffb1da0 0x40086af7:0x3ffb1dd0 0x40088ae1:0x3ffb1df0 0x4000bec7:0x3ffb1e10 0x40134279:0x3ffb1e30 0x400d42ec:0x3ff
+b1e50 0x4015b53b:0x3ffb1e70 0x400da897:0x3ffb1e90 0x400daab9:0x3ffb1eb0 0x400d2833:0x3ffb1ef0 0x400d2de7:0x3ffb1f60 0x4013767f:0x3ffb1fa0
+
+
+Rebooting...
+ets Jun  8 2016 00:22:57
+
+rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
+configsip: 0, SPIWP:0xee
+clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
+mode:DIO, clock div:1
+load:0x3fff0018,len:4
+load:0x3fff001c,len:952
+load:0x40078000,len:6084
+load:0x40080000,len:7936
+entry 0x40080310
+[W][esp32-hal-psram.c:31] psramInit(): PSRAM init failed!
+ESP ChipSize:4194304

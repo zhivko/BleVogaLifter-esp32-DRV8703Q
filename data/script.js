@@ -67,6 +67,7 @@
 	  function onMessage(evt)
 	  {
 		var allData = evt.data.split('\n');
+		//writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received:</span>');
 		for(i=0; i<allData.length; i++)
 		{
 			if(allData[i].startsWith("wifi ", 0))
@@ -75,7 +76,7 @@
 			}
 			else
 			{
-				writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received: ' + allData[i] +'</span>');
+				writeToScreen('<span style="color: blue;">'+allData[i]+'</span>');
 			}
 		}
 		var res = evt.data.split(' ');
@@ -115,6 +116,14 @@
 		if(websocket!=null)
 			websocket.send(textToSend);
 	  }
+
+	  function doSendCommand2(textToSend, element)
+	  {
+
+		if(websocket!=null)
+			websocket.send(textToSend + " " + element.id);
+	  }
+
 	  function writeToScreen(message)
 	  {
 		output.innerHTML = message + "<br>\n" + output.innerHTML;		

@@ -9,6 +9,8 @@
 #include <ArduinoOTA.h>
 #include <stdint.h>
 
+#include <Ticker.h>
+#include "TaskCore0.h"
 
 String ssid("AsusKZ");
 String password("Doitman1");
@@ -27,9 +29,12 @@ uint16_t toTransfer;
 //uninitalised pointers to SPI objects
 SPIClass * vspi = NULL;
 
-int shouldStop=0;
-int shouldPwmUp = 0;
-int shouldPwmDown = 0;
+int shouldStopM1 = 0;
+int shouldStopM2 = 0;
+int shouldPwm_M1_left = 0;
+int shouldPwm_M1_right = 0;
+int shouldPwm_M2_left = 0;
+int shouldPwm_M2_right = 0;
 
 // use 13 bit precission for LEDC timer
 #define LEDC_TIMER_10_BIT  10
@@ -43,7 +48,8 @@ int shouldPwmDown = 0;
 #define LED_PIN GPIO_NUM_2
 
 #define LEDC_RESOLUTION LEDC_TIMER_10_BIT
-#define pwmValueMax  2^LEDC_RESOLUTION
+#define pwmValueMax  1024
+#define pwmDelta     5
 
 // use first channel of 16 channels (started from zero)
 #define LEDC_CHANNEL_0 0
@@ -54,20 +60,20 @@ int shouldPwmDown = 0;
 #define SS2 25
 
 
-int brightness = 0; // how bright the LED is
+int pwm1 = 0;       // how bright the LED is
+int pwm2 = 0;       // how bright the LED is
 int fadeAmount = 1; // how many points to fade the LED by
 
 String status1;
 String status2;
+String gdfVds1;
+String gdfVds2;
 int motor1_pos;
 int motor2_pos;
 
-hw_timer_t * timer = NULL;
-volatile SemaphoreHandle_t timerSemaphore;
-portMUX_TYPE timerMux = portMUX_INITIALIZER_UNLOCKED;
-volatile uint32_t isrCounter = 0;
-volatile uint32_t lastIsrAt = 0;
+Ticker mover;
 
+TaskHandle_t TaskA;
 
 void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = pwmValueMax) {
   /*
@@ -136,10 +142,6 @@ void clearFault()
 
 void testSpi()
 {
-  //SPI_MODE0, ..., SPI_MODE3
-  vspi->setDataMode(SPI_MODE1);
-  vspi->setHwCs(false);
-
   usleep(1);
   digitalWrite(SS1, LOW);
   // SPI WRITE
@@ -160,72 +162,156 @@ void testSpi()
   vspi->endTransaction();
   digitalWrite(SS1, HIGH);
   usleep(1);
+  status1 = "";
+  status2 = "";
   if(reply == B00011000)
   {
-    status1.concat("DRV8703Q is ON (Not locked)");
+    status1.concat("DRV8703Q is ON (Not locked)\n");
+
+    usleep(1);
+    digitalWrite(SS1, LOW);
+    // SPI WRITE
+    vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
+    // fault bytes:
+    uint8_t FAULT_FAULT = B1 << 7;     // FAULT R 0b Logic OR of the FAULT status register excluding the OTW bit
+    uint8_t FAULT_WDFLT = B1 << 6;     // WDFLT R 0b Watchdog time-out fault
+    uint8_t FAULT_GDF = B1 << 5;       // GDF R 0b Indicates gate drive fault condition
+    uint8_t FAULT_OCP = B1 << 4;       // OCP R 0b Indicates VDS monitor overcurrent fault condition
+    uint8_t FAULT_VM_UVFL = B1 << 3;   // VM_UVFL R 0b Indicates VM undervoltage lockout fault condition
+    uint8_t FAULT_VCP_UVFL = B1 << 2;  // VCP_UVFL R 0b Indicates charge-pump undervoltage fault condition
+    uint8_t FAULT_OTSD = B1 << 1;      // OTSD R 0b Indicates overtemperature shutdown
+    uint8_t FAULT_OTW = B1 << 0;       // OTW R 0b Indicates overtemperature warning
+
+    data_read = B10000000;  // READ OPERATION
+    data_address = B00000000; // ADDRES 0x FAULT REGISTER
+    data = data_read | data_address;
+    lowbyte = B0;
+    data_int = data << 8 | lowbyte;
+
+    reply = vspi->transfer16(data_int);  // should return 0x18
+    vspi->endTransaction();
+    digitalWrite(SS1, HIGH);
+    usleep(1);
+    Serial.print("SPI reply: ");
+    Serial.println(reply, BIN);
+
+    if((reply & FAULT_WDFLT) > 0)
+    {
+      status1.concat("Watchdog time-out fault\n");
+    }
+    if((reply & FAULT_GDF) > 0)
+    {
+      status1.concat("Gate drive fault\n");
+    }
+    if((reply & FAULT_OCP) > 0)
+    {
+      status1.concat("VDS monitor overcurrent fault\n");
+    }
+    if((reply & FAULT_VM_UVFL) > 0)
+    {
+      status1.concat("VM undervoltage lockout fault\n");
+    }
+    if((reply & FAULT_VCP_UVFL) > 0)
+    {
+      status1.concat("Charge-pump undervoltage fault\n");
+    }
+    if((reply & FAULT_OTSD) > 0)
+    {
+      status1.concat("Overtemperature shutdown\n");
+    }
+    if((reply & FAULT_OTW) > 0)
+    {
+      status1.concat("Overtemperature warning\n ");
+    }
+
+  }
+  else
+  {
+    status1.concat("DRV8703Q is NOT ON\n");
   }
 
+
+}
+
+
+void gdfVdsStatus()
+{
   usleep(1);
   digitalWrite(SS1, LOW);
   // SPI WRITE
   vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
-  // fault bytes:
-  uint8_t FAULT_FAULT = B1 << 7;     // FAULT R 0b Logic OR of the FAULT status register excluding the OTW bit
-  uint8_t FAULT_WDFLT = B1 << 6;     // WDFLT R 0b Watchdog time-out fault
-  uint8_t FAULT_GDF = B1 << 5;       // GDF R 0b Indicates gate drive fault condition
-  uint8_t FAULT_OCP = B1 << 4;       // OCP R 0b Indicates VDS monitor overcurrent fault condition
-  uint8_t FAULT_VM_UVFL = B1 << 3;   // VM_UVFL R 0b Indicates VM undervoltage lockout fault condition
-  uint8_t FAULT_VCP_UVFL = B1 << 2;  // VCP_UVFL R 0b Indicates charge-pump undervoltage fault condition
-  uint8_t FAULT_OTSD = B1 << 1;      // OTSD R 0b Indicates overtemperature shutdown
-  uint8_t FAULT_OTW = B1 << 0;       // OTW R 0b Indicates overtemperature warning
 
-  data_read = B10000000;  // READ OPERATION
-  data_address = B00000000; // ADDRES 0x FAULT REGISTER
-  data = data_read | data_address;
-  lowbyte = B0;
-  data_int = data << 8 | lowbyte;
+  // http://www.ti.com/product/drv8702-q1?qgpn=drv8702-q1
+  // datasheet: http://www.ti.com/lit/gpn/drv8702-q1
+  // page 42
 
-  reply = vspi->transfer16(data_int);  // should return 0x18
+
+  byte data_read = B10000000;  // READ OPERATION
+  byte data_address = B00001000; // ADDRES 01x VDS and GDF Status Register Name
+  byte data = data_read | data_address;
+  byte lowbyte = B0;
+  uint16_t data_int = data << 8 | lowbyte;
+
+  uint16_t reply = vspi->transfer16(data_int);  // should return GDF and VDS statuses
   vspi->endTransaction();
+  digitalWrite(SS1, HIGH);
+  usleep(1);
+  gdfVds1 = "";
+
+  // fault bytes:
+  uint8_t H2_GDF = B1 << 7;       // Gate drive fault on the high-side FET of half bridge 2
+  uint8_t L2_GDF = B1 << 6;       // Gate drive fault on the low-side FET of half bridge 2
+  uint8_t H1_GDF = B1 << 5;       // Gate drive fault on the high-side FET of half bridge 1
+  uint8_t L1_GDF = B1 << 4;       // Gate drive fault on the low-side FET of half bridge 1
+  uint8_t H2_VDS = B1 << 3;       // VDS monitor overcurrent fault on the high-side FET of half bridge 2
+  uint8_t L2_VDS = B1 << 2;       // VDS monitor overcurrent fault on the low-side FET of half bridge 2
+  uint8_t H1_VDS = B1 << 1;       // VDS monitor overcurrent fault on the high-side FET of half bridge 1
+  uint8_t L1_VDS = B1 << 0;       // VDS monitor overcurrent fault on the low-side FET of half bridge 1
+
   digitalWrite(SS1, HIGH);
   usleep(1);
   Serial.print("SPI reply: ");
   Serial.println(reply, BIN);
 
-  if((reply & FAULT_WDFLT) > 0)
+  if((reply & H2_GDF) > 0)
   {
-    status1.concat("Watchdog time-out fault");
+    gdfVds1.concat(" Gate drive fault on the high-side FET of half bridge 2\n");
   }
-  if((reply & FAULT_GDF) > 0)
+  if((reply & L2_GDF) > 0)
   {
-    status1.concat("Gate drive fault");
+    gdfVds1.concat("Gate drive fault on the low-side FET of half bridge 2\n");
   }
-  if((reply & FAULT_OCP) > 0)
+  if((reply & H1_GDF) > 0)
   {
-    status1.concat("VDS monitor overcurrent fault");
+    gdfVds1.concat("Gate drive fault on the high-side FET of half bridge 1\n");
   }
-  if((reply & FAULT_VM_UVFL) > 0)
+  if((reply & L1_GDF) > 0)
   {
-    status1.concat("VM undervoltage lockout fault");
+    gdfVds1.concat("Gate drive fault on the low-side FET of half bridge 1\n");
   }
-  if((reply & FAULT_VCP_UVFL) > 0)
+  if((reply & H2_VDS) > 0)
   {
-    status1.concat("Charge-pump undervoltage fault");
+    gdfVds1.concat("VDS monitor overcurrent fault on the high-side FET of half bridge 2\n");
   }
-  if((reply & FAULT_OTSD) > 0)
+  if((reply & L2_VDS) > 0)
   {
-    status1.concat("Overtemperature shutdown");
+    gdfVds1.concat("VDS monitor overcurrent fault on the low-side FET of half bridge 2\n");
   }
-  if((reply & FAULT_OTW) > 0)
+  if((reply & H1_VDS) > 0)
   {
-    status1.concat("Overtemperature warning");
+    gdfVds1.concat("VDS monitor overcurrent fault on the high-side FET of half bridge 1\n ");
   }
+  if((reply & L1_VDS) > 0)
+  {
+    gdfVds1.concat("VDS monitor overcurrent fault on the low-side FET of half bridge 1\n ");
+  }  
 }
+
 
 void pwmStop()
 {
-  brightness = 0;
-  ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
+  pwm1 = 0;
+  ledcAnalogWrite(LEDC_CHANNEL_0, pwm1, pwmValueMax);
 }
 
 String scanNetworks(){
@@ -283,7 +369,17 @@ void processWsData(char *data, AsyncWebSocketClient* client)
     testSpi();
     client->printf("motor1_pos %i", motor1_pos);
     client->printf("motor2_pos %i", motor2_pos);
-    client->printf("status: %s %s", status1.c_str(), status2.c_str());
+    client->printf("status: %s", status1.c_str());
+    client->printf("shouldPwm_M1_left: %d", shouldPwm_M1_left);
+    client->printf("shouldPwm_M1_right: %d", shouldPwm_M1_right);
+    client->printf("shouldstop_M1: %d", shouldStopM1);
+    client->printf("shouldPwm_M2_left: %d", shouldPwm_M2_left);
+    client->printf("shouldPwm_M2_right: %d", shouldPwm_M2_right);
+    client->printf("shouldstop_M2: %d", shouldStopM2);
+
+  }else if(input.startsWith("gdfvdsstatus")){
+    gdfVdsStatus();
+    client->printf("gdfvdsstatus: %s", gdfVds1.c_str());
   }else if(input.startsWith("clrflt")){
     clearFault();
     client->printf("Clear Fault done.");
@@ -295,19 +391,30 @@ void processWsData(char *data, AsyncWebSocketClient* client)
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid.c_str(), password.c_str());
     waitForIp();
-  }else if(input.startsWith("goup")){
-    shouldStop = 0;
-    shouldPwmUp = 1;
-    shouldPwmDown = 0;
-  }else if(input.startsWith("godown")){
-    shouldStop = 0;
-    shouldPwmUp = 0;
-    shouldPwmDown = 1;
-  }else if(input.startsWith("slowstop")){
-    shouldStop = 1;
-    shouldPwmUp = 0;
-    shouldPwmDown = 0;
-    pwmStop();
+  }else if(input.startsWith("pwm_m1_left")){
+    shouldStopM1 = 0;
+    shouldPwm_M1_left = 1;
+    shouldPwm_M1_right = 0;
+  }else if(input.startsWith("pwm_m1_right")){
+    shouldStopM1 = 0;
+    shouldPwm_M1_left = 0;
+    shouldPwm_M1_right = 1;
+  }else if(input.startsWith("stop pwm_m1")){
+    shouldStopM1 = 1;
+    shouldPwm_M1_left = 0;
+    shouldPwm_M1_right = 0;
+  }else if(input.startsWith("pwm_m2_left")){
+    shouldStopM2 = 0;
+    shouldPwm_M2_left = 1;
+    shouldPwm_M2_right = 0;
+  }else if(input.startsWith("pwm_m2_right")){
+    shouldStopM2 = 0;
+    shouldPwm_M2_left = 0;
+    shouldPwm_M2_right = 1;
+  }else if(input.startsWith("stop pwm_m2")){
+    shouldStopM2 = 1;
+    shouldPwm_M2_left = 0;
+    shouldPwm_M2_right = 0;
   }else if(input.startsWith("scan")){
     printf("scan");
     client->printf(scanNetworks().c_str());
@@ -452,7 +559,11 @@ void blink(int i)
   }
 }
 
+
+
 void setup(){
+  blink(1);
+
   Serial.begin(115200);
   Serial.print("ESP ChipSize:");
   Serial.println(ESP.getFlashChipSize());
@@ -461,13 +572,16 @@ void setup(){
   pinMode(SS1, OUTPUT); // Slave select first gate driver
   pinMode(SS2, OUTPUT); // Slave select second gate driver
 
-  blink(1);
   //initialise vspi with default pins
   Serial.println("initialise vspi with default pins 1...");
   vspi = new SPIClass(VSPI);
   // VSPI - SCLK = 18, MISO = 19, MOSI = 23, SS = 5
   // begin(int8_t sck=-1, int8_t miso=-1, int8_t mosi=-1, int8_t ss=-1);
   vspi->begin(18,19,23,SS1);
+
+  vspi->setDataMode(SPI_MODE1);
+  vspi->setHwCs(false);
+
   Serial.println("initialise vspi with default pins 3...");
 
   delay(10);
@@ -528,23 +642,18 @@ void setup(){
                     NULL);            // Task handle. 
 */
 
-  // Create semaphore to inform us when the timer has fired
-  timerSemaphore = xSemaphoreCreateBinary();
+  mover.attach_ms(5, move);
 
-  // Use 1st timer of 4 (counted from zero).
-  // Set 80 divider for prescaler (see ESP32 Technical Reference Manual for more
-  // info).
-  timer = timerBegin(0, 80, true);
+ xTaskCreatePinnedToCore(
+   Task1,                  /* pvTaskCode */
+   "Workload1",            /* pcName */
+   1000,                   /* usStackDepth */
+   NULL,                   /* pvParameters */
+   1,                      /* uxPriority */
+   &TaskA,                 /* pxCreatedTask */
+   0);                     /* xCoreID */
 
-  // Attach onTimer function to our timer.
-  timerAttachInterrupt(timer, &onTimer, true);
 
-  // Set alarm to call onTimer function every 10ms (value in microseconds).
-  // Repeat the alarm (third parameter)
-  timerAlarmWrite(timer, 10000, true);    // 10000 us = 10ms
-
-  // Start an alarm
-  timerAlarmEnable(timer);
 
   blink(5);
 
@@ -552,51 +661,82 @@ void setup(){
 
 void loop(){
   ArduinoOTA.handle();
-  sleep(10);
+  sleep(5);
 
-/*
-  if (xSemaphoreTake(timerSemaphore, 0) == pdTRUE){
-    uint32_t isrCount = 0, isrTime = 0;
-    // Read the interrupt count and time
-    portENTER_CRITICAL(&timerMux);
-    isrCount = isrCounter;
-    isrTime = lastIsrAt;
-    portEXIT_CRITICAL(&timerMux);
-    // Print it
-    Serial.print("onTimer no. ");
-    Serial.print(isrCount);
-    Serial.print(" at ");
-    Serial.print(isrTime);
-    Serial.println(" ms");
-  }
-*/
 
 }
 
-void IRAM_ATTR onTimer(){
-  // Increment the counter and set the time of ISR
-  portENTER_CRITICAL_ISR(&timerMux);
-  isrCounter++;
-  lastIsrAt = millis();
-  portEXIT_CRITICAL_ISR(&timerMux);
-  // Give a semaphore that we can check in the loop
-  xSemaphoreGiveFromISR(timerSemaphore, NULL);
-  // It is safe to use digitalRead/Write here if you want to toggle an output
-  if(shouldPwmUp == 1 && shouldStop != 1)
+void move(){
+
+  // MOTOR1
+  if(shouldPwm_M1_left == 1 && shouldStopM1 != 1)
   {
-    if(brightness<=(pwmValueMax-1))
+    if(pwm1<=(pwmValueMax-pwmDelta))
     {
-      brightness = brightness + 1;
-      ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
+      pwm1 = pwm1 + pwmDelta;
     }
   }
-
-  if(shouldPwmDown == 1 && shouldStop != 1)
+  else if(shouldPwm_M1_right == 1 && shouldStopM1 != 1)
   {
-    if(brightness>=1)
+    if(pwm1>=(-pwmValueMax+pwmDelta))
     {
-      brightness = brightness - 1;
-      ledcAnalogWrite(LEDC_CHANNEL_0, brightness, pwmValueMax);
+      pwm1 = pwm1 - pwmDelta;
+    }  
+  }else if(shouldStopM1 == 1)
+  {
+    if(pwm1>0)
+      pwm1 = pwm1 - pwmDelta;
+    else if(pwm1<0)
+      pwm1 = pwm1+pwmDelta;
+    else
+      shouldStopM1 = 0;
+  }
+  
+
+  if(pwm1 > 0)
+  {
+      ledcAnalogWrite(LEDC_CHANNEL_0, pwm1, pwmValueMax);
+      //Serial.printf("pwm1: %d\n", pwm1);
+  }
+  else if(pwm1<0)
+  {
+      ledcAnalogWrite(LEDC_CHANNEL_1, abs(pwm1), pwmValueMax);
+      //Serial.printf("pwm1: %d\n", pwm1);
+  }
+
+  // MOTOR2
+  if(shouldPwm_M2_left == 1 && shouldStopM2 != 1)
+  {
+    if(pwm2<=(pwmValueMax-pwmDelta))
+    {
+      pwm2=pwm2+pwmDelta;
     }
-  }  
+  }
+  else if(shouldPwm_M2_right == 1 && shouldStopM2 != 1)
+  {
+    if(pwm2>=(-pwmValueMax+pwmDelta))
+    {
+      pwm2=pwm2-pwmDelta;
+    }  
+  }else if(shouldStopM2 == 1)
+  {
+    if(pwm2>0)
+      pwm2=pwm2-pwmDelta;
+    else if(pwm2<0)
+      pwm2=pwm2+pwmDelta;
+    else
+      shouldStopM2 = 0;
+  }
+
+  if(pwm2>=0)
+  {
+      ledcAnalogWrite(LEDC_CHANNEL_2, pwm2, pwmValueMax);
+      //Serial.printf("pwm2: %d\n", pwm2);
+  }
+  else if(pwm2<0)
+  {
+      ledcAnalogWrite(LEDC_CHANNEL_3, abs(pwm2), pwmValueMax);
+      //Serial.printf("pwm2: %d\n", pwm2);
+  }
+
 }

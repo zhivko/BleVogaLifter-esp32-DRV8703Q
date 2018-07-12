@@ -3,23 +3,10 @@ Core 1 register dump:
 PC      : 0x401595e8  PS      : 0x00060034  A0      : 0x80080f36  A1      : 0x3ffc0bb0
 A2      : 0x00000001  A3      : 0x3ffbae34  A4      : 0x00000001  A5      : 0x00000001
 A6      : 0x00060021  A7      : 0x00000000  A8      : 0x800812ce  A9      : 0x3ffc0b90
-A10     : 0x01ec682c  A11     : 0x00000000  A12     : 0x000003e8  A13     : 0x00000000
-A14     : 0x3ff42000  A15     : 0x700000eb  SAR     : 0x00000017  EXCCAUSE: 0x00000007
+A10     : 0x00205abc  A11     : 0x00000000  A12     : 0x000003e8  A13     : 0x00000000
+A14     : 0x3ff42000  A15     : 0x700000eb  SAR     : 0x00000013  EXCCAUSE: 0x00000007
 EXCVADDR: 0x00000000  LBEG    : 0x4000c349  LEND    : 0x4000c36b  LCOUNT  : 0x00000000
 Core 1 was running in ISR context:
-EPC1    : 0x4009143c  EPC2    : 0x00000000  EPC3    : 0x00000000  EPC4    : 0x401595e8
+EPC1    : 0x4009144a  EPC2    : 0x00000000  EPC3    : 0x00000000  EPC4    : 0x401595e8
 
-Backtrace: 0x401595e8:0x3ffc0bb0 0x40080f33:0x3ffc0bd0 0x400813a5:0x3ffc0bf0 0x40081a91:0x3ffc0c10 0x40091439:0x00000000
-
-Rebooting...
-ets Jun  8 2016 00:22:57
-
-rst:0x3 (SW_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
-configsip: 0, SPIWP:0xee
-clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
-mode:DIO, clock div:1
-load:0x3fff0018,len:4
-load:0x3fff001c,len:952
-load:0x40078000,len:6084
-load:0x40080000,len:7936
-entry 0x40080310
+Backtrace: 0x401595e8:0x3ffc0bb0 0x40080f33:0x3ffc0bd0 0x400813a5:0x3ffc0bf0 0x40081a91:0x3ffc0c10 0x40091447:0x00000000

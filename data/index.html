@@ -16,9 +16,9 @@
 	
 	<table border="1">
 	<tbody><tr><td><object id="gotop 1" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gotop 2" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
-	<tr><td><object id="goup 1" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="goup 2" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
+	<tr><td><object id="pwm_m1_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
 	<tr><td id='motor1_pos'></td><td></td><td id='motor2_pos'></td></tr>
-	<tr><td><object id="godown 1" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="godown 2" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
+	<tr><td><object id="pwm_m1_right" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_right" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
 	<tr><td><object id="gobottom 1" data="48px-Gnome-go-bottom.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gobottom 2" data="48px-Gnome-go-bottom.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
 	</tbody></table>
 	
@@ -26,6 +26,8 @@
 	
     <p>
 	<button onclick="doSendCommand('status')" type="button">Status</button> 
+	<button onclick="doSendCommand('gdfvdsstatus')" type="button">GDF VDS Status</button> 
+	
 	<button onclick="doSendCommand('clrflt')" type="button">Clear Fault</button> 
 	<button onclick="doSendCommand('scan')" type="button">Scan</button> 
 	

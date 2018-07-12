@@ -142,7 +142,7 @@
      inkscape:label="Layer 1"
      inkscape:groupmode="layer"
 	 onmousedown="top.doSendParentElementId(window.frameElement)"	 
-	 onmouseup="top.doSendCommand('slowstop')"	 
+	 onmouseup="top.doSendCommand2('stop', window.frameElement)"	 
      id="layer1">
     <path
        sodipodi:type="arc"

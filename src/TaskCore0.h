@@ -1,4 +1,9 @@
-void workLoad (void) ;                // prototype is required
+void workLoad()
+{
+  delay(5);
+}
+
+
 void Task1( void * parameter )
 {
   int start = millis();
@@ -10,7 +15,4 @@ void Task1( void * parameter )
  }
 }
 
-void workLoad()
-{
-  delay(5);
-}
+

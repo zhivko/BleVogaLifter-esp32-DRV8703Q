@@ -1,7 +1,6 @@
 // platformio run --target uploadfs
 // C:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q>c:\Python27\python.exe c:\Users\klemen\.platformio\packages\framework-arduinoespressif32\tools\esptool.py --chip esp32 --port COM3 --baud 115200 --before default_reset --after hard_reset erase_flash
 // Need to test: VL53L0X
-
 #include <WiFi.h>
 #include <FS.h>
 #include "SPIFFS.h"
@@ -14,8 +13,7 @@
 #include <Ticker.h>
 #include "TaskCore0.h"
 
-#include "AsyncJson.h"
-#include <ArduinoJson.h>
+#include "ArduinoJson.h"
 
 String ssid("AndroidAP");
 String password("Doitman1");
@@ -657,19 +655,15 @@ void setup(){
 
   server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=40").setDefaultFile("index.html").setTemplateProcessor(processor);
 
-  
-  AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/rest/endpoint", [](AsyncWebServerRequest *request, JsonVariant &json) {
-    JsonObject& jsonObj = json.as<JsonObject>();
-    AsyncResponseStream *response = request->beginResponseStream("application/json");
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject &root = jsonBuffer.createObject();
-    root["heap"] = ESP.getFreeHeap();
-    root["ssid"] = WiFi.SSID();
-    root.printTo(*response);
+  server.on("/json", HTTP_ANY, [](AsyncWebServerRequest * request) {
+    AsyncJsonResponse * response = new AsyncJsonResponse();
+    JsonObject& root = response->getRoot();
+    root["key1"] = "key number one";
+    JsonObject& nested = root.createNestedObject("nested");
+    nested["key1"] = "key number one";
+    response->setLength();
     request->send(response);
   });
-  server.addHandler(handler);
-  
 
   server.begin();
   ArduinoOTA.begin();

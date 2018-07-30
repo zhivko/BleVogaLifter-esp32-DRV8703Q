@@ -1,12 +1,11 @@
-Guru Meditation Error: Core  1 panic'ed (Cache disabled but cached memory region accessed)
-Core 1 register dump:
-PC      : 0x401595e8  PS      : 0x00060034  A0      : 0x80080f36  A1      : 0x3ffc0bb0
-A2      : 0x00000001  A3      : 0x3ffbae34  A4      : 0x00000001  A5      : 0x00000001
-A6      : 0x00060021  A7      : 0x00000000  A8      : 0x800812ce  A9      : 0x3ffc0b90
-A10     : 0x00205abc  A11     : 0x00000000  A12     : 0x000003e8  A13     : 0x00000000
-A14     : 0x3ff42000  A15     : 0x700000eb  SAR     : 0x00000013  EXCCAUSE: 0x00000007
-EXCVADDR: 0x00000000  LBEG    : 0x4000c349  LEND    : 0x4000c36b  LCOUNT  : 0x00000000
-Core 1 was running in ISR context:
-EPC1    : 0x4009144a  EPC2    : 0x00000000  EPC3    : 0x00000000  EPC4    : 0x401595e8
+Task 1 complete running on Core 0 time 0 ms.
+Guru Meditation Error: Core  0 panic'ed (LoadProhibited). Exception was unhandled.
+Core 0 register dump:
+PC      : 0x4008331a  PS      : 0x00060633  A0      : 0x80083488  A1      : 0x3ffb7190
+A2      : 0x3ffb8fbc  A3      : 0x00000000  A4      : 0x00000001  A5      : 0x00000001
+A6      : 0x00060023  A7      : 0x00000000  A8      : 0xffffffff  A9      : 0x00000000
+A10     : 0x00000000  A11     : 0x3ffbfa88  A12     : 0x00166049  A13     : 0x00171c26
+A14     : 0x000000c4  A15     : 0x3ffc1e44  SAR     : 0x0000001d  EXCCAUSE: 0x0000001c
+EXCVADDR: 0xffffffff  LBEG    : 0x4000c2e0  LEND    : 0x4000c2f6  LCOUNT  : 0xffffffff
 
-Backtrace: 0x401595e8:0x3ffc0bb0 0x40080f33:0x3ffc0bd0 0x400813a5:0x3ffc0bf0 0x40081a91:0x3ffc0c10 0x40091447:0x00000000
+Backtrace: 0x4008331a:0x3ffb7190 0x40083485:0x3ffb71b0 0x4008668c:0x3ffb71d0 0x40086288:0x3ffb71f0 0x40139fa1:0x3ffb7210 0x4013ac25:0x3ffb7230 0x4013ad00:0x3ffb7250 0x4013bb0e:0x3ffb7270 0x4008ab81:0x3ffb72a0

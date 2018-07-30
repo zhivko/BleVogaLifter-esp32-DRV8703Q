@@ -3,69 +3,81 @@
 	  
 	  var output;
 
-		function searchKeyPress2(e)
+	function searchKeyPress2(e)
+	{
+		// look for window.event in case event isn't passed in
+		e = e || window.event;
+		if (e.keyCode == 13)
 		{
-		    // look for window.event in case event isn't passed in
-		    e = e || window.event;
-		    if (e.keyCode == 13)
-		    {
-		        document.getElementById('btn2').click();
-		        return false;
-		    }
-		    return true;
+			document.getElementById('btn2').click();
+			return false;
 		}
-		
-		function handleEnableMotors(cb)
+		return true;
+	}
+	
+	function handleEnableMotors(cb)
+	{
+		if(cb.checked)
+			doSendCommand("enable");
+		else
+			doSendCommand("disable");
+	}
+	
+	function searchKeyPress1(e)
+	{
+		// look for window.event in case event isn't passed in
+		e = e || window.event;
+		if (e.keyCode == 13)
 		{
-			if(cb.checked)
-				doSendCommand("enable");
-			else
-				doSendCommand("disable");
-			
-			
+			document.getElementById('btn1').click();
+			return false;
 		}
-		
-		function searchKeyPress1(e)
-		{
-		    // look for window.event in case event isn't passed in
-		    e = e || window.event;
-		    if (e.keyCode == 13)
-		    {
-		        document.getElementById('btn1').click();
-		        return false;
-		    }
-		    return true;
-		}		
+		return true;
+	}		
 
-	  function init()
-	  {
+	function init()
+	{
 		output = parent.document.getElementById("output");
-		testWebSocket();	
-	  }
-	  function testWebSocket()
-	  {
-	  	if (location.host != "")
-	  	{
-			var wsUri = "ws://" + location.host + "/ws";
-			//var wsUri = "ws://192.168.1.24/";
-			websocket = new WebSocket(wsUri);
-			websocket.onopen = function(evt) { onOpen(evt) };
-			websocket.onclose = function(evt) { onClose(evt) };
-			websocket.onmessage = function(evt) { onMessage(evt) };
-			websocket.onerror = function(evt) { onError(evt) };		
-	  	}
-	  }
-	  function onOpen(evt)
-	  {
+		testWebSocket();
+
+		xmlhttp = new XMLHttpRequest();
+		xmlhttp.onreadystatechange = function() {
+			if (this.readyState == 4 && this.status == 200) {
+				myObj = JSON.parse(this.responseText);
+				txt += "<select>"
+				for (x in myObj) {
+					txt += "<option>" + myObj[x].name;
+				}
+				txt += "</select>"
+				document.getElementById("demo").innerHTML = txt;
+			}
+		}
+		setTimeout(makePeriodicJsonReq, 3000);
+	}
+	function testWebSocket()
+	{
+	if (location.host != "")
+	{
+		var wsUri = "ws://" + location.host + "/ws";
+		//var wsUri = "ws://192.168.1.24/";
+		websocket = new WebSocket(wsUri);
+		websocket.onopen = function(evt) { onOpen(evt) };
+		websocket.onclose = function(evt) { onClose(evt) };
+		websocket.onmessage = function(evt) { onMessage(evt) };
+		websocket.onerror = function(evt) { onError(evt) };		
+	}
+	}
+	function onOpen(evt)
+	{
 		writeToScreen("CONNECTED");
 		writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received: ' + evt.data+'</span>');
-	  }
-	  function onClose(evt)
-	  {
+	}
+	function onClose(evt)
+	{
 		writeToScreen("DISCONNECTED");
-	  }
-	  function onMessage(evt)
-	  {
+	}
+	function onMessage(evt)
+	{
 		var allData = evt.data.split('\n');
 		//writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received:</span>');
 		for(i=0; i<allData.length; i++)
@@ -88,93 +100,51 @@
 		{		
 			document.getElementById("motor2_pos").textContent = res[1];
 		}
-	  }
-	  function onError(evt)
-	  {
+	}
+	function onError(evt)
+	{
 		writeToScreen('<span style="color: red;">ERROR:</span> ' + evt.data);
-	  }
-	  function wifiConnect(i)
-	  {
+	}
+	function wifiConnect(i)
+	{
 		textToSend = "wificonnect " + document.getElementById("wifi" + i).textContent + " " + document.getElementById("pass" + i).value;
 		websocket.send(textToSend);
-	  }
-	  function doSend(element)
-	  {
+	}
+	function doSend(element)
+	{
 		//writeToScreen("SENT: " + message); 
 		textToSend = element.value;
 		websocket.send(textToSend);
-	  }
-	  function doSendParentElementId(element)
-	  {
+	}
+	function doSendParentElementId(element)
+	{
 
-		if(websocket!=null)
-			websocket.send(element.id);
-	  }
-	  function doSendCommand(textToSend)
-	  {
+	if(websocket!=null)
+		websocket.send(element.id);
+	}
+	function doSendCommand(textToSend)
+	{
 
-		if(websocket!=null)
-			websocket.send(textToSend);
-	  }
+	if(websocket!=null)
+		websocket.send(textToSend);
+	}
 
-	  function doSendCommand2(textToSend, element)
-	  {
+	function doSendCommand2(textToSend, element)
+	{
 
-		if(websocket!=null)
-			websocket.send(textToSend + " " + element.id);
-	  }
+	if(websocket!=null)
+		websocket.send(textToSend + " " + element.id);
+	}
 
-	  function writeToScreen(message)
-	  {
+	function writeToScreen(message)
+	{
 		output.innerHTML = message + "<br>\n" + output.innerHTML;		
-	  }
-	  function doDisconnect()
-	  {
+	}
+	function doDisconnect()
+	{
 		var disconnect = document.getElementById("disconnect");
 		disconnect.disabled = true;
 		websocket.close();
-	  }
-
-	function jogXYClick(a)
-	{
-
-		var radios = document.getElementsByName('translateOrOposite');
-		var translate='';
-		for (var i = 0, length = radios.length; i < length; i++) {
-		    if (radios[i].checked) {
-		        translate = radios[i].value;
-		        break;
-		    }
-		}
-		var coord = a.substring(0, 1);
-		var sign = a.substring(1, 2);
-		var value = a.substring(2, a.length) * 10;
-		if (translate=='translate')
-		{
-			if (sign=='+')
-				signOposite='-';
-			else
-				signOposite='+';
-			if (coord == 'X' || coord == 'Y')
-				var command = "X" + sign + value + " Y" + signOposite + value;
-			else
-				var command = "Z" + sign + value + " E" + signOposite + value;
-		}
-		else
-		{
-			if (coord == 'X' || coord == 'Y')
-				if(sign=="-")
-					var command = "X" + sign + value + " Y" + sign + value;
-				else
-					var command = "Y" + sign + value + " X" + sign + value;
-			else
-				if(sign=="-")
-					var command = "E" + sign + value + " Z" + sign + value;
-				else
-					var command = "Z" + sign + value + " E" + sign + value;				
-		}
-		writeToScreen("SENT: " + command); 
-		doSendCommand(command);
 	}
 
 	function jogClick(a)
@@ -187,4 +157,13 @@
 	    return str.indexOf(suffix, str.length - suffix.length) !== -1;
 	}
 
-window.addEventListener("load", init, false);
+	window.addEventListener("load", init, false);
+
+	function makePeriodicJsonReq() {
+		obj = { "table":"customers", "limit":20 };
+		dbParam = JSON.stringify(obj);
+		xmlhttp.open("POST", "/rest/endpoint", true);
+		xmlhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
+		xmlhttp.send("x=" + dbParam); 
+	}
+}

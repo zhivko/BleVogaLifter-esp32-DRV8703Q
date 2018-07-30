@@ -1,5 +1,7 @@
 // platformio run --target uploadfs
 // C:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q>c:\Python27\python.exe c:\Users\klemen\.platformio\packages\framework-arduinoespressif32\tools\esptool.py --chip esp32 --port COM3 --baud 115200 --before default_reset --after hard_reset erase_flash
+// Need to test: VL53L0X
+
 #include <WiFi.h>
 #include <FS.h>
 #include "SPIFFS.h"
@@ -12,7 +14,10 @@
 #include <Ticker.h>
 #include "TaskCore0.h"
 
-String ssid("AsusKZ");
+#include "AsyncJson.h"
+#include <ArduinoJson.h>
+
+String ssid("AndroidAP");
 String password("Doitman1");
 
 char* softAP_ssid = "MLIFT";
@@ -58,6 +63,15 @@ int shouldPwm_M2_right = 0;
 #define LEDC_CHANNEL_3 3
 #define SS1 33
 #define SS2 25
+
+    // @doc https://remotemonitoringsystems.ca/time-zone-abbreviations.php
+    // @doc timezone UTC = UTC
+const char* NTP_SERVER0 = "0.si.pool.ntp.org";
+const char* NTP_SERVER1 = "1.si.pool.ntp.org";
+const char* NTP_SERVER2 = "2.si.pool.ntp.org";
+const char* TZ_INFO2    = "CET-1CEST-2,M3.5.0/02:00:00,M10.5.0/03:00:00";
+time_t now;
+struct tm info;
 
 
 int pwm1 = 0;       // how bright the LED is
@@ -496,7 +510,7 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
 
 String processor(const String& var)
 {
-  if(var == "HELLO_FROM_TEMPLATE")
+  if(var == "encoder1_value")
     return F("Hello world!");
   return String();
 }
@@ -608,9 +622,23 @@ void setup(){
 
   }, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
 
+  Serial.println("Configuring adc1");
+  adc1_config_width(ADC_WIDTH_BIT_10);
+//  adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0-3,6V
+//  adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0-3,6V
+
 
   WiFi.begin(ssid.c_str(), password.c_str());
   waitForIp();
+
+  Serial.println("Config ntp time...");
+  configTzTime(TZ_INFO2, NTP_SERVER0, NTP_SERVER1, NTP_SERVER2);
+
+  time(&now);
+  localtime_r(&now, &info);
+
+  Serial.println(&info, "%Y-%m-%d %H:%M:%S");
+  Serial.println("Config ntp time...DONE.");
 
   server.on("/", HTTP_GET, [](AsyncWebServerRequest *request){
     Serial.println("/");
@@ -627,10 +655,39 @@ void setup(){
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 
-  server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=40");
+  server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=40").setDefaultFile("index.html").setTemplateProcessor(processor);
+
+  
+  AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/rest/endpoint", [](AsyncWebServerRequest *request, JsonVariant &json) {
+    JsonObject& jsonObj = json.as<JsonObject>();
+    AsyncResponseStream *response = request->beginResponseStream("application/json");
+    DynamicJsonBuffer jsonBuffer;
+    JsonObject &root = jsonBuffer.createObject();
+    root["heap"] = ESP.getFreeHeap();
+    root["ssid"] = WiFi.SSID();
+    root.printTo(*response);
+    request->send(response);
+  });
+  server.addHandler(handler);
+  
 
   server.begin();
   ArduinoOTA.begin();
+  // OTA callbacks
+  ArduinoOTA.onStart([]() {
+    // Clean SPIFFS
+    SPIFFS.end();
+
+    // Disable client connections    
+    ws.enable(false);
+
+    // Advertise connected clients what's going on
+    ws.textAll("OTA Update Started");
+
+    // Close them
+    ws.closeAll();
+
+  });
 
 /*
   xTaskCreate(
@@ -644,26 +701,24 @@ void setup(){
 
   mover.attach_ms(5, move);
 
+
  xTaskCreatePinnedToCore(
-   Task1,                  /* pvTaskCode */
-   "Workload1",            /* pcName */
-   1000,                   /* usStackDepth */
-   NULL,                   /* pvParameters */
-   1,                      /* uxPriority */
-   &TaskA,                 /* pxCreatedTask */
-   0);                     /* xCoreID */
+   Task1,                  // pvTaskCode
+   "Workload1",            // pcName
+   4096,                   // usStackDepth 
+   NULL,                   // pvParameters
+   1,                      // uxPriority
+   &TaskA,                 // pxCreatedTask
+   0);                     // xCoreID 
 
-
-
-  blink(5);
+  blink(5);  
 
 }
 
 void loop(){
   ArduinoOTA.handle();
   sleep(5);
-
-
+  vTaskDelay(1);
 }
 
 void move(){

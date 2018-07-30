@@ -162,7 +162,7 @@
 	function makePeriodicJsonReq() {
 		obj = { "table":"customers", "limit":20 };
 		dbParam = JSON.stringify(obj);
-		xmlhttp.open("POST", "/rest/endpoint", true);
+		xmlhttp.open("POST", "/json", true);
 		xmlhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
 		xmlhttp.send("x=" + dbParam); 
 	}

@@ -13,10 +13,14 @@
 #include <Ticker.h>
 #include "TaskCore0.h"
 
-#include <ArduinoJson.h>
+#include "AsyncJson.h"
+#include "ArduinoJson.h"
 
-String ssid("AndroidAP");
-String password("Doitman1");
+#include <Preferences.h>
+
+String ssid;
+String password;
+Preferences preferences;
 
 char* softAP_ssid = "MLIFT";
 char* softAP_password = "Doitman1";
@@ -375,7 +379,7 @@ void processWsData(char *data, AsyncWebSocketClient* client)
 {
   String input;
   input.concat(data);
-  printf("received: %s",input.c_str());
+  printf("received: %s\n",input.c_str());
   if(input.equals(String("status")))
   {
     testSpi();
@@ -398,8 +402,13 @@ void processWsData(char *data, AsyncWebSocketClient* client)
   }else if(input.startsWith("wificonnect")){
     ssid = getToken(input, ' ', 1);
     password = getToken(input, ' ', 2);
-    NO_AP_FOUND_count = 0;
-    printf("wificonnect %s %s", ssid.c_str(), password.c_str());
+
+    preferences.begin("settings", false);
+    preferences.putString("wifi_ssid", ssid);
+    preferences.putString("wifi_password", password);
+    preferences.end();
+
+    printf("wificonnect ssid: %s, password: %s\n", ssid.c_str(), password.c_str());
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid.c_str(), password.c_str());
     waitForIp();
@@ -515,6 +524,8 @@ String processor(const String& var)
 
 void waitForIp()
 {
+  NO_AP_FOUND_count = 0;
+
   while (WiFi.status() != WL_CONNECTED) {
 
     delay(1000);
@@ -528,7 +539,7 @@ void waitForIp()
     Serial.print("no ap count count: ");
     Serial.println(NO_AP_FOUND_count);
 
-    if(NO_AP_FOUND_count >= 2)
+    if(NO_AP_FOUND_count >= 4)
     {
       WiFi.mode(WIFI_AP);
       if(WiFi.softAP(softAP_ssid, softAP_password))
@@ -550,6 +561,7 @@ void waitForIp()
       }
       break;
     }
+    NO_AP_FOUND_count = NO_AP_FOUND_count+1;
   }
 
   Serial.print("status:");
@@ -557,7 +569,6 @@ void waitForIp()
 
   Serial.print("WiFi local IP:");
   Serial.println(WiFi.localIP());
-
 }
 
 void blink(int i)
@@ -607,17 +618,23 @@ void setup(){
   ledcAttachPin(PWM3_PIN, LEDC_CHANNEL_2);
   ledcAttachPin(PWM4_PIN, LEDC_CHANNEL_3);
 
+  Serial.println("load saved wifi settings...");
+  preferences.begin("settings",false);
+  ssid = preferences.getString("wifi_ssid");
+  password = preferences.getString("wifi_password");
+  Serial.println("load saved wifi settings...Done.");
+  preferences.end();
+
   WiFiEventId_t eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
-          Serial.print("WiFi lost connection. Reason: ");
-          Serial.println(info.disconnected.reason);
+    Serial.print("WiFi lost connection. Reason: ");
+    Serial.println(info.disconnected.reason);
 
-          String msg;
-          msg.concat(info.disconnected.reason);
+    String msg;
+    msg.concat(info.disconnected.reason);
 
-          if(msg.indexOf("201")>=0){
-            NO_AP_FOUND_count++;
-          }
-
+    if(msg.indexOf("201")>=0){
+      NO_AP_FOUND_count++;
+}    
   }, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
 
   Serial.println("Configuring adc1");
@@ -625,8 +642,10 @@ void setup(){
 //  adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0-3,6V
 //  adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0-3,6V
 
-
-  WiFi.begin(ssid.c_str(), password.c_str());
+  if(!ssid.equals(""))
+  {
+    WiFi.begin(ssid.c_str(), password.c_str());
+  }
   waitForIp();
 
   Serial.println("Config ntp time...");
@@ -655,32 +674,12 @@ void setup(){
 
   server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=40").setDefaultFile("index.html").setTemplateProcessor(processor);
 
-  server.on("/json", HTTP_POST, [](AsyncWebServerRequest *request){
-    //nothing and dont remove it
-  }, NULL, [](AsyncWebServerRequest *request, uint8_t *data, size_t len, size_t index, size_t total){
-    DynamicJsonBuffer jsonBuffer;
-    JsonObject& root = jsonBuffer.parseObject((const char*)data);
-    if (root.success()) {
-      
-      if (root.containsKey("cmd")) {
-        Serial.println(root["cmd"].asString());
-      }
-      if (root.containsKey("cmd1")) {
-        Serial.println(root["cmd1"].asString());
-      }
-      
-      AsyncResponseStream *response = request->beginResponseStream("application/json");
-      DynamicJsonBuffer jsonBuffer;
-      JsonObject &root = jsonBuffer.createObject();
-      root["heap"] = ESP.getFreeHeap();
-      root["ssid"] = WiFi.SSID();
-      root.printTo(*response);
-      request->send(response);
-
-    } else {
-      request->send(404, "text/plain", "");
-    }
+  AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/json", [](AsyncWebServerRequest *request, JsonVariant &json) {
+    JsonObject& jsonObj = json.as<JsonObject>();
+    Serial.println("json called.");
+    Serial.println(jsonObj.c_str);
   });
+  server.addHandler(handler);
 
   server.begin();
   ArduinoOTA.begin();

@@ -1,7 +1,9 @@
 #include <driver/adc.h>
 #include "AiEsp32RotaryEncoder.h"
-#include <Preferences.h>
+
 #include "MiniPID.h"
+
+#include <Preferences.h>
 
 #define ROTARY_ENCODER1_A_PIN 16
 #define ROTARY_ENCODER1_B_PIN 4
@@ -10,7 +12,7 @@
 
 AiEsp32RotaryEncoder rotaryEncoder1 = AiEsp32RotaryEncoder(ROTARY_ENCODER1_A_PIN, ROTARY_ENCODER1_B_PIN, -1, -1);
 AiEsp32RotaryEncoder rotaryEncoder2 = AiEsp32RotaryEncoder(ROTARY_ENCODER2_A_PIN, ROTARY_ENCODER2_B_PIN, -1, -1);
-Preferences preferences;
+extern Preferences preferences;
 int16_t encoder1_value;
 int16_t encoder2_value;
 
@@ -41,7 +43,7 @@ void workLoad()
 
 void Task1( void * parameter )
 {
-  preferences.begin("Logger", false);
+  preferences.begin("settings", false);
   //preferences.putInt("encoder1_value", 0);
   //preferences.putInt("encoder2_value", 0);
   encoder1_value=preferences.getInt("encoder1_value");
@@ -66,12 +68,12 @@ void Task1( void * parameter )
     if(rotaryEncoder1.encoderChanged()>0)
     {
       start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-      preferences.begin("Logger", true);
+      preferences.begin("settings", false);
       preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
       preferences.end();
       delta = micros() - start;
       if(delta>20)
-        Serial.printf("Preferences save completed in %lu us.\n", delta);
+        Serial.printf("Preferences save completed in %u us.\n", delta);
 
       output1=pid1.getOutput((float)rotaryEncoder1.readEncoder(), target1);
     }
@@ -79,7 +81,7 @@ void Task1( void * parameter )
     if(rotaryEncoder2.encoderChanged()>0)
     {
       start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-      preferences.begin("Logger", true);
+      preferences.begin("settings", false);
       preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
       preferences.end();
       delta = micros() - start;

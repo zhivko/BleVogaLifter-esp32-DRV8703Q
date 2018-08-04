@@ -1,17 +1,12 @@
-CORRUPT HEAP: multi_heap.c:187 detected at 0x3ffbff98
-abort() was called at PC 0x40090dfe on core 1
+Guru Meditation Error: Core  0 panic'ed (Cache disabled but cached memory region accessed)
+Core 0 register dump:
+PC      : 0x400d2324  PS      : 0x00060034  A0      : 0x40081fb0  A1      : 0x3ffc05f0
+A2      : 0x00000010  A3      : 0x3ffc483c  A4      : 0x00000000  A5      : 0x00010000
+A6      : 0x00000000  A7      : 0x13002249  A8      : 0x8008158c  A9      : 0x00000001
+A10     : 0x00060220  A11     : 0x00000000  A12     : 0x3ffc5724  A13     : 0x00001004
+A14     : 0x3ffc5724  A15     : 0xffffeffb  SAR     : 0x0000001e  EXCCAUSE: 0x00000007
+EXCVADDR: 0x00000000  LBEG    : 0x00000000  LEND    : 0x00000000  LCOUNT  : 0x00000000
+Core 0 was running in ISR context:
+EPC1    : 0x40082ec7  EPC2    : 0x00000000  EPC3    : 0x00000000  EPC4    : 0x400d2324
 
-Backtrace: 0x40091bd8:0x3ffbda90 0x40091ddb:0x3ffbdab0 0x40090dfe:0x3ffbdad0 0x400913ad:0x3ffbdaf0 0x400918ae:0x3ffbdb10 0x40086ece:0x3ffbdb30 0x40088eb1:0x3ffbdb50 0x4000bec7:0x3ffbdb70 0x40137b55:0x3ffbdb90 0x400d6fbd:0x3ffbdbb0 0x400d701a:0x3ffbdbf0 0x400d7029:0x3ffbdc10 0x40138cba:0x3ffbdc30 0x40138f59:0x3ffbdc60 0x4013908f:0x3ffbdc90
-
-Rebooting...
-ets Jun  8 2016 00:22:57
-
-rst:0xc (SW_CPU_RESET),boot:0x13 (SPI_FAST_FLASH_BOOT)
-configsip: 0, SPIWP:0xee
-clk_drv:0x00,q_drv:0x00,d_drv:0x00,cs0_drv:0x00,hd_drv:0x00,wp_drv:0x00
-mode:DIO, clock div:1
-load:0x3fff0018,len:4
-load:0x3fff001c,len:952
-load:0x40078000,len:6084
-load:0x40080000,len:7936
-entry 0x40080310
+Backtrace: 0x400d2324:0x3ffc05f0 0x40081fad:0x3ffc0610 0x40082ec4:0x00000000

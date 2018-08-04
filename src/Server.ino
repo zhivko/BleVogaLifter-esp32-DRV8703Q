@@ -1,5 +1,6 @@
 // platformio run --target uploadfs
 // C:\Users\klemen\Dropbox\Voga\BleVogaLifter-esp32-DRV8703Q>c:\Python27\python.exe c:\Users\klemen\.platformio\packages\framework-arduinoespressif32\tools\esptool.py --chip esp32 --port COM3 --baud 115200 --before default_reset --after hard_reset erase_flash
+// https://github.com/thehookup/ESP32_Ceiling_Light/blob/master/GPIO_Limitations_ESP32_NodeMCU.jpg
 // Need to test: VL53L0X
 #include <WiFi.h>
 #include <FS.h>
@@ -14,7 +15,7 @@
 #include "TaskCore0.h"
 
 #include "AsyncJson.h"
-#include "ArduinoJson.h"
+#include <ArduinoJson.h>
 
 #include <Preferences.h>
 
@@ -53,6 +54,7 @@ int shouldPwm_M2_right = 0;
 #define PWM3_PIN GPIO_NUM_26
 #define PWM4_PIN GPIO_NUM_27
 #define LED_PIN GPIO_NUM_2
+#define GATEDRIVER_PIN GPIO_NUM_32
 
 #define LEDC_RESOLUTION LEDC_TIMER_10_BIT
 #define pwmValueMax  1024
@@ -66,6 +68,11 @@ int shouldPwm_M2_right = 0;
 #define SS1 33
 #define SS2 25
 
+#define ROTARY_ENCODER2_A_PIN GPIO_NUM_16
+#define ROTARY_ENCODER2_B_PIN GPIO_NUM_4
+#define ROTARY_ENCODER1_A_PIN GPIO_NUM_17
+#define ROTARY_ENCODER1_B_PIN GPIO_NUM_5
+
     // @doc https://remotemonitoringsystems.ca/time-zone-abbreviations.php
     // @doc timezone UTC = UTC
 const char* NTP_SERVER0 = "0.si.pool.ntp.org";
@@ -76,20 +83,28 @@ time_t now;
 struct tm info;
 
 
-int pwm1 = 0;       // how bright the LED is
-int pwm2 = 0;       // how bright the LED is
+int16_t pwm1 = 0;       // how bright the LED is
+int16_t pwm2 = 0;       // how bright the LED is
 int fadeAmount = 1; // how many points to fade the LED by
 
 String status1;
 String status2;
 String gdfVds1;
 String gdfVds2;
-int motor1_pos;
-int motor2_pos;
 
+int16_t encoder1_value;
+int16_t encoder2_value;
 Ticker mover;
-
+Ticker jsonReporter;
 TaskHandle_t TaskA;
+
+double output1, output2;
+double target1, target2;
+bool pidEnabled = false;
+
+AiEsp32RotaryEncoder rotaryEncoder2 = AiEsp32RotaryEncoder(ROTARY_ENCODER2_A_PIN, ROTARY_ENCODER2_B_PIN, -1, -1);
+AiEsp32RotaryEncoder rotaryEncoder1 = AiEsp32RotaryEncoder(ROTARY_ENCODER1_A_PIN, ROTARY_ENCODER1_B_PIN, -1, -1);
+
 
 void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = pwmValueMax) {
   /*
@@ -101,9 +116,6 @@ void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = pwmVal
   */
   ledcWrite(channel, _min(value, valueMax));
 }
-
-
-
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\r\n", dirname);
@@ -156,38 +168,9 @@ void clearFault()
   digitalWrite(SS1, HIGH);
 }
 
-void testSpi()
+String getfault(uint16_t reply)
 {
-  usleep(1);
-  digitalWrite(SS1, LOW);
-  // SPI WRITE
-  vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
-
-  // http://www.ti.com/product/drv8702-q1?qgpn=drv8702-q1
-  // datasheet: http://www.ti.com/lit/gpn/drv8702-q1
-  // page 42
-
-
-  byte data_read = B10000000;  // READ OPERATION
-  byte data_address = B00010000; // ADDRES 02x MAIN REGISTER
-  byte data = data_read | data_address;
-  byte lowbyte = B0;
-  uint16_t data_int = data << 8 | lowbyte;
-
-  uint16_t reply = vspi->transfer16(data_int);  // should return 0x18 B00011000
-  vspi->endTransaction();
-  digitalWrite(SS1, HIGH);
-  usleep(1);
-  status1 = "";
-  status2 = "";
-  if(reply == B00011000)
-  {
-    status1.concat("DRV8703Q is ON (Not locked)\n");
-
-    usleep(1);
-    digitalWrite(SS1, LOW);
-    // SPI WRITE
-    vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
+    String status="";
     // fault bytes:
     uint8_t FAULT_FAULT = B1 << 7;     // FAULT R 0b Logic OR of the FAULT status register excluding the OTW bit
     uint8_t FAULT_WDFLT = B1 << 6;     // WDFLT R 0b Watchdog time-out fault
@@ -197,6 +180,78 @@ void testSpi()
     uint8_t FAULT_VCP_UVFL = B1 << 2;  // VCP_UVFL R 0b Indicates charge-pump undervoltage fault condition
     uint8_t FAULT_OTSD = B1 << 1;      // OTSD R 0b Indicates overtemperature shutdown
     uint8_t FAULT_OTW = B1 << 0;       // OTW R 0b Indicates overtemperature warning
+    if((reply & FAULT_WDFLT) > 0)
+    {
+      status.concat("Watchdog time-out fault\n");
+    }
+    if((reply & FAULT_GDF) > 0)
+    {
+      status.concat("Gate drive fault\n");
+    }
+    if((reply & FAULT_OCP) > 0)
+    {
+      status.concat("VDS monitor overcurrent fault\n");
+    }
+    if((reply & FAULT_VM_UVFL) > 0)
+    {
+      status.concat("VM undervoltage lockout fault\n");
+    }
+    if((reply & FAULT_VCP_UVFL) > 0)
+    {
+      status.concat("Charge-pump undervoltage fault\n");
+    }
+    if((reply & FAULT_OTSD) > 0)
+    {
+      status.concat("Overtemperature shutdown\n");
+    }
+    if((reply & FAULT_OTW) > 0)
+    {
+      status.concat("Overtemperature warning\n ");
+    }
+    return status;
+}
+
+
+void testSpi(int which)
+{
+  usleep(1);
+  if(which==1)
+    digitalWrite(SS1, LOW);
+  else
+    digitalWrite(SS2, LOW);
+  // SPI WRITE
+  vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
+
+  // http://www.ti.com/product/drv8702-q1?qgpn=drv8702-q1
+  // datasheet: http://www.ti.com/lit/gpn/drv8702-q1
+  // page 42
+  byte data_read = B10000000;  // READ OPERATION
+  byte data_address = B00010000; // ADDRES 02x MAIN REGISTER
+  byte data = data_read | data_address;
+  byte lowbyte = B0;
+  uint16_t data_int = data << 8 | lowbyte;
+
+  uint16_t reply = vspi->transfer16(data_int);  // should return 0x18 B00011000
+  vspi->endTransaction();
+
+  usleep(1);
+  if(reply == B00011000)
+  {
+    Serial.println("YES it is ON!");
+    if(which==1)
+      status1.concat("DRV8703Q is ON (Not locked)\n");
+    else
+      status2.concat("DRV8703Q is ON (Not locked)\n");
+
+    Serial.println("----");
+    Serial.println(status1);
+    Serial.println(status2);
+    Serial.println("----");
+
+    usleep(1);
+
+    // SPI WRITE
+    vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
 
     data_read = B10000000;  // READ OPERATION
     data_address = B00000000; // ADDRES 0x FAULT REGISTER
@@ -206,54 +261,42 @@ void testSpi()
 
     reply = vspi->transfer16(data_int);  // should return 0x18
     vspi->endTransaction();
-    digitalWrite(SS1, HIGH);
+    if(which==1)
+      digitalWrite(SS1, HIGH);
+    else
+      digitalWrite(SS2, HIGH);
     usleep(1);
     Serial.print("SPI reply: ");
     Serial.println(reply, BIN);
 
-    if((reply & FAULT_WDFLT) > 0)
-    {
-      status1.concat("Watchdog time-out fault\n");
-    }
-    if((reply & FAULT_GDF) > 0)
-    {
-      status1.concat("Gate drive fault\n");
-    }
-    if((reply & FAULT_OCP) > 0)
-    {
-      status1.concat("VDS monitor overcurrent fault\n");
-    }
-    if((reply & FAULT_VM_UVFL) > 0)
-    {
-      status1.concat("VM undervoltage lockout fault\n");
-    }
-    if((reply & FAULT_VCP_UVFL) > 0)
-    {
-      status1.concat("Charge-pump undervoltage fault\n");
-    }
-    if((reply & FAULT_OTSD) > 0)
-    {
-      status1.concat("Overtemperature shutdown\n");
-    }
-    if((reply & FAULT_OTW) > 0)
-    {
-      status1.concat("Overtemperature warning\n ");
-    }
-
+    if(which == 1)
+      status1.concat(getfault(reply));
+    else
+      status2.concat(getfault(reply));
+  
+    Serial.println("----");
+    Serial.println(status1);
+    Serial.println(status2);
+    Serial.println("----");
   }
   else
   {
-    status1.concat("DRV8703Q is NOT ON\n");
+    if(which == 1)
+      status1.concat("DRV8703Q is NOT ON\n");
+    else
+      status2.concat("DRV8703Q is NOT ON\n");
   }
 
 
 }
 
-
-void gdfVdsStatus()
+void gdfVdsStatus(int which)
 {
   usleep(1);
-  digitalWrite(SS1, LOW);
+  if(which == 1)
+    digitalWrite(SS1, LOW);
+  else
+    digitalWrite(SS2, LOW);
   // SPI WRITE
   vspi->beginTransaction(SPISettings(spiClk, MSBFIRST, SPI_MODE1));
 
@@ -270,9 +313,12 @@ void gdfVdsStatus()
 
   uint16_t reply = vspi->transfer16(data_int);  // should return GDF and VDS statuses
   vspi->endTransaction();
-  digitalWrite(SS1, HIGH);
+  if(which == 1)
+    digitalWrite(SS1, HIGH);
+  else
+    digitalWrite(SS2, HIGH);
   usleep(1);
-  gdfVds1 = "";
+  String ret = "";
 
   // fault bytes:
   uint8_t H2_GDF = B1 << 7;       // Gate drive fault on the high-side FET of half bridge 2
@@ -284,50 +330,53 @@ void gdfVdsStatus()
   uint8_t H1_VDS = B1 << 1;       // VDS monitor overcurrent fault on the high-side FET of half bridge 1
   uint8_t L1_VDS = B1 << 0;       // VDS monitor overcurrent fault on the low-side FET of half bridge 1
 
-  digitalWrite(SS1, HIGH);
+  if(which == 1)
+    digitalWrite(SS1, HIGH);
+  else
+    digitalWrite(SS2, HIGH);
+
   usleep(1);
   Serial.print("SPI reply: ");
   Serial.println(reply, BIN);
 
   if((reply & H2_GDF) > 0)
   {
-    gdfVds1.concat(" Gate drive fault on the high-side FET of half bridge 2\n");
+    ret.concat(" Gate drive fault on the high-side FET of half bridge 2\n");
   }
   if((reply & L2_GDF) > 0)
   {
-    gdfVds1.concat("Gate drive fault on the low-side FET of half bridge 2\n");
+    ret.concat("Gate drive fault on the low-side FET of half bridge 2\n");
   }
   if((reply & H1_GDF) > 0)
   {
-    gdfVds1.concat("Gate drive fault on the high-side FET of half bridge 1\n");
+    ret.concat("Gate drive fault on the high-side FET of half bridge 1\n");
   }
   if((reply & L1_GDF) > 0)
   {
-    gdfVds1.concat("Gate drive fault on the low-side FET of half bridge 1\n");
+    ret.concat("Gate drive fault on the low-side FET of half bridge 1\n");
   }
   if((reply & H2_VDS) > 0)
   {
-    gdfVds1.concat("VDS monitor overcurrent fault on the high-side FET of half bridge 2\n");
+    ret.concat("VDS monitor overcurrent fault on the high-side FET of half bridge 2\n");
   }
   if((reply & L2_VDS) > 0)
   {
-    gdfVds1.concat("VDS monitor overcurrent fault on the low-side FET of half bridge 2\n");
+    ret.concat("VDS monitor overcurrent fault on the low-side FET of half bridge 2\n");
   }
   if((reply & H1_VDS) > 0)
   {
-    gdfVds1.concat("VDS monitor overcurrent fault on the high-side FET of half bridge 1\n ");
+    ret.concat("VDS monitor overcurrent fault on the high-side FET of half bridge 1\n ");
   }
   if((reply & L1_VDS) > 0)
   {
-    gdfVds1.concat("VDS monitor overcurrent fault on the low-side FET of half bridge 1\n ");
-  }  
-}
+    ret.concat("VDS monitor overcurrent fault on the low-side FET of half bridge 1\n ");
+  } 
 
+  if(which==1)
+    gdfVds1 = ret;
+  else
+    gdfVds2 = ret;
 
-void pwmStop()
-{
-  pwm1 = 0;
-  ledcAnalogWrite(LEDC_CHANNEL_0, pwm1, pwmValueMax);
 }
 
 String scanNetworks(){
@@ -371,7 +420,6 @@ String getToken(String data, char separator, int index)
   {
     ret = data.substring(strIndex[0], strIndex[1]);
   }
-
   return ret;
 }
 
@@ -382,10 +430,20 @@ void processWsData(char *data, AsyncWebSocketClient* client)
   printf("received: %s\n",input.c_str());
   if(input.equals(String("status")))
   {
-    testSpi();
-    client->printf("motor1_pos %i", motor1_pos);
-    client->printf("motor2_pos %i", motor2_pos);
-    client->printf("status: %s", status1.c_str());
+    status1 = " ";
+    status2 = " ";
+    testSpi(1);
+    Serial.println("Statuses:");
+    Serial.println(status1);
+    testSpi(2);
+    Serial.println(status2);
+
+    client->printf("motor1_pos %i", encoder1_value);
+    client->printf("motor2_pos %i", encoder2_value);
+ 
+    client->printf("status1: %s", status1.c_str());
+    client->printf("status2: %s", status2.c_str());
+    
     client->printf("shouldPwm_M1_left: %d", shouldPwm_M1_left);
     client->printf("shouldPwm_M1_right: %d", shouldPwm_M1_right);
     client->printf("shouldstop_M1: %d", shouldStopM1);
@@ -393,12 +451,43 @@ void processWsData(char *data, AsyncWebSocketClient* client)
     client->printf("shouldPwm_M2_right: %d", shouldPwm_M2_right);
     client->printf("shouldstop_M2: %d", shouldStopM2);
 
+
   }else if(input.startsWith("gdfvdsstatus")){
-    gdfVdsStatus();
-    client->printf("gdfvdsstatus: %s", gdfVds1.c_str());
+    gdfVdsStatus(1);
+    gdfVdsStatus(2);
+    client->printf("gdfvdsstatus1: %s", gdfVds1.c_str());
+    client->printf("gdfvdsstatus2: %s", gdfVds2.c_str());
   }else if(input.startsWith("clrflt")){
     clearFault();
     client->printf("Clear Fault done.");
+  }else if(input.startsWith("pwm1=") || input.startsWith("pwm2=")){
+    Serial.println("Parsing pwm1=.. pwm2=... command");
+    String pwm1_str = getToken(input, ' ', 0);
+    String pwm1_duty = getToken(pwm1_str, '=', 1);
+    String pwm2_str = getToken(input, ' ', 1);
+    String pwm2_duty = getToken(pwm2_str, '=', 1);
+    Serial.println("Parsing pwm1=.. pwm2=... command...1");
+
+    pwm1 = pwm1_duty.toInt();
+    pwm2 = pwm2_duty.toInt();
+    Serial.printf("Parsing pwm1=%d pwm2=%d command...2\n", pwm1, pwm2);
+  }else if(input.startsWith("target1=") || input.startsWith("target2=")){
+    Serial.printf("Parsing target1=.. target2=... command:%s\n",input.c_str());
+    String target1_str = getToken(input, ' ', 0);
+    String target1_duty = getToken(target1_str, '=', 1);
+    String target2_str = getToken(input, ' ', 1);
+    String target2_duty = getToken(target2_str, '=', 1);
+
+    target1 = (double)target1_duty.toFloat();
+    target2 = (double)target2_duty.toFloat();
+    Serial.print("target1= ");
+    Serial.print(target1);
+    Serial.print(" target2= ");
+    Serial.println(target2);
+  }else if(input.startsWith("enablePid")){
+    pidEnabled = true;
+  }else if(input.startsWith("disablePid")){
+    pidEnabled = false;
   }else if(input.startsWith("wificonnect")){
     ssid = getToken(input, ' ', 1);
     password = getToken(input, ' ', 2);
@@ -450,7 +539,7 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
     client->ping();
   } else if(type == WS_EVT_DISCONNECT){
     //client disconnected
-    printf("ws[%s][%u] disconnect: %u\n", server->url(), client->id());
+    printf("ws[%s][%u] disconnect\n", server->url(), client->id());
   } else if(type == WS_EVT_ERROR){
     //error was received from the other end
     printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
@@ -522,6 +611,31 @@ String processor(const String& var)
   return String();
 }
 
+bool checkNoApFoundCritical()
+{
+  if(NO_AP_FOUND_count >= 4)
+  {
+    WiFi.mode(WIFI_AP);
+    if(WiFi.softAP(softAP_ssid, softAP_password))
+    {
+      Serial.println("Wait 100 ms for AP_START...");
+      delay(100);
+      Serial.println("");
+      IPAddress Ip(192, 168, 1, 1);
+      IPAddress NMask(255, 255, 255, 0);
+      WiFi.softAPConfig(Ip, Ip, NMask);
+      IPAddress myIP = WiFi.softAPIP();
+      Serial.println("Network " + String(softAP_ssid) + " is running.");
+      Serial.print("AP IP address: ");
+      Serial.println(myIP);
+    }
+    return true;
+  }
+  else
+    return false;
+}
+
+
 void waitForIp()
 {
   NO_AP_FOUND_count = 0;
@@ -538,36 +652,15 @@ void waitForIp()
 
     Serial.print("no ap count count: ");
     Serial.println(NO_AP_FOUND_count);
-
-    if(NO_AP_FOUND_count >= 4)
-    {
-      WiFi.mode(WIFI_AP);
-      if(WiFi.softAP(softAP_ssid, softAP_password))
-      {
-        Serial.println("Wait 100 ms for AP_START...");
-        delay(100);
-        Serial.println("");
-        IPAddress Ip(192, 168, 1, 1);
-        IPAddress NMask(255, 255, 255, 0);
-        WiFi.softAPConfig(Ip, Ip, NMask);
-        IPAddress myIP = WiFi.softAPIP();
-        Serial.println("Network " + String(softAP_ssid) + " is running.");
-        Serial.print("AP IP address: ");
-        Serial.println(myIP);
-      }
-      else
-      {
-        Serial.println("Starting AP failed.");
-      }
+    if(checkNoApFoundCritical())
       break;
-    }
     NO_AP_FOUND_count = NO_AP_FOUND_count+1;
   }
 
-  Serial.print("status:");
+  Serial.print("status: ");
   Serial.println(WiFi.status());
 
-  Serial.print("WiFi local IP:");
+  Serial.print("WiFi local IP: ");
   Serial.println(WiFi.localIP());
 }
 
@@ -592,16 +685,30 @@ void setup(){
   Serial.println(ESP.getFlashChipSize());
 
   pinMode(LED_PIN, OUTPUT);
-  pinMode(SS1, OUTPUT); // Slave select first gate driver
-  pinMode(SS2, OUTPUT); // Slave select second gate driver
+  pinMode(SS1, OUTPUT);     // Slave select first gate driver
+  pinMode(SS2, OUTPUT);     // Slave select second gate driver
+
+  digitalWrite(SS1, HIGH);   // deselect gate driver 1 - CS to HIGH
+  digitalWrite(SS2, HIGH);   // deselect gate driver 2 - CS to HIGH
+
+  pinMode(GATEDRIVER_PIN, OUTPUT); //
+  digitalWrite(GATEDRIVER_PIN, LOW);  //disable gate drivers
 
   //initialise vspi with default pins
   Serial.println("initialise vspi with default pins 1...");
   vspi = new SPIClass(VSPI);
   // VSPI - SCLK = 18, MISO = 19, MOSI = 23, SS = 5
   // begin(int8_t sck=-1, int8_t miso=-1, int8_t mosi=-1, int8_t ss=-1);
-  vspi->begin(18,19,23,SS1);
 
+  pinMode(ROTARY_ENCODER2_A_PIN, INPUT_PULLUP);
+	pinMode(ROTARY_ENCODER2_B_PIN, INPUT_PULLUP);
+  pinMode(ROTARY_ENCODER1_A_PIN, INPUT_PULLUP);
+  pinMode(ROTARY_ENCODER1_B_PIN, INPUT_PULLUP);
+
+  pinMode(19, INPUT_PULLUP);
+  pinMode(18, OUTPUT);
+  pinMode(23, OUTPUT);
+  vspi->begin(18,19,23,-1);
   vspi->setDataMode(SPI_MODE1);
   vspi->setHwCs(false);
 
@@ -634,13 +741,14 @@ void setup(){
 
     if(msg.indexOf("201")>=0){
       NO_AP_FOUND_count++;
-}    
+      checkNoApFoundCritical();
+    }    
   }, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
 
   Serial.println("Configuring adc1");
   adc1_config_width(ADC_WIDTH_BIT_10);
-//  adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0-3,6V
-//  adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0-3,6V
+  adc1_config_channel_atten(ADC1_CHANNEL_6, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0V...3,6V
+  adc1_config_channel_atten(ADC1_CHANNEL_7, ADC_ATTEN_DB_11);  //ADC_ATTEN_DB_11 = 0V...3,6V
 
   if(!ssid.equals(""))
   {
@@ -672,14 +780,7 @@ void setup(){
   ws.onEvent(onEvent);
   server.addHandler(&ws);
 
-  server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=40").setDefaultFile("index.html").setTemplateProcessor(processor);
-
-  AsyncCallbackJsonWebHandler* handler = new AsyncCallbackJsonWebHandler("/json", [](AsyncWebServerRequest *request, JsonVariant &json) {
-    JsonObject& jsonObj = json.as<JsonObject>();
-    Serial.println("json called.");
-    Serial.println(jsonObj.c_str);
-  });
-  server.addHandler(handler);
+  server.serveStatic("/", SPIFFS, "/").setCacheControl("max-age=30").setDefaultFile("index.html").setTemplateProcessor(processor);
 
   server.begin();
   ArduinoOTA.begin();
@@ -687,6 +788,9 @@ void setup(){
   ArduinoOTA.onStart([]() {
     // Clean SPIFFS
     SPIFFS.end();
+
+    jsonReporter.detach();
+    mover.detach();
 
     // Disable client connections    
     ws.enable(false);
@@ -708,8 +812,8 @@ void setup(){
                     NULL);            // Task handle. 
 */
 
-  mover.attach_ms(5, move);
-
+  mover.attach_ms(10, move);
+  jsonReporter.attach_ms(500, reportJson);
 
  xTaskCreatePinnedToCore(
    Task1,                  // pvTaskCode
@@ -720,14 +824,17 @@ void setup(){
    &TaskA,                 // pxCreatedTask
    0);                     // xCoreID 
 
-  blink(5);  
+
+  Serial.println("Gate driver ON");
+  digitalWrite(GATEDRIVER_PIN, HIGH);  //enable gate drivers
+  Serial.println("Gate driver ON...Done.");
+  blink(5);
 
 }
 
 void loop(){
   ArduinoOTA.handle();
-  sleep(5);
-  vTaskDelay(1);
+  vTaskDelay(10 / portTICK_PERIOD_MS);
 }
 
 void move(){
@@ -735,34 +842,32 @@ void move(){
   // MOTOR1
   if(shouldPwm_M1_left == 1 && shouldStopM1 != 1)
   {
-    if(pwm1<=(pwmValueMax-pwmDelta))
+    if(pwm1 <= (pwmValueMax - pwmDelta))
     {
       pwm1 = pwm1 + pwmDelta;
     }
   }
   else if(shouldPwm_M1_right == 1 && shouldStopM1 != 1)
   {
-    if(pwm1>=(-pwmValueMax+pwmDelta))
+    if(pwm1 >= (-pwmValueMax + pwmDelta))
     {
       pwm1 = pwm1 - pwmDelta;
     }  
   }else if(shouldStopM1 == 1)
   {
-    if(pwm1>0)
+    if(pwm1 > 0)
       pwm1 = pwm1 - pwmDelta;
     else if(pwm1<0)
-      pwm1 = pwm1+pwmDelta;
+      pwm1 = pwm1 + pwmDelta;
     else
       shouldStopM1 = 0;
   }
-  
-
   if(pwm1 > 0)
   {
       ledcAnalogWrite(LEDC_CHANNEL_0, pwm1, pwmValueMax);
       //Serial.printf("pwm1: %d\n", pwm1);
   }
-  else if(pwm1<0)
+  else if(pwm1 < 0)
   {
       ledcAnalogWrite(LEDC_CHANNEL_1, abs(pwm1), pwmValueMax);
       //Serial.printf("pwm1: %d\n", pwm1);
@@ -771,23 +876,23 @@ void move(){
   // MOTOR2
   if(shouldPwm_M2_left == 1 && shouldStopM2 != 1)
   {
-    if(pwm2<=(pwmValueMax-pwmDelta))
+    if(pwm2 <= (pwmValueMax - pwmDelta))
     {
-      pwm2=pwm2+pwmDelta;
+      pwm2 =pwm2 + pwmDelta;
     }
   }
   else if(shouldPwm_M2_right == 1 && shouldStopM2 != 1)
   {
-    if(pwm2>=(-pwmValueMax+pwmDelta))
+    if(pwm2 >= (-pwmValueMax + pwmDelta))
     {
-      pwm2=pwm2-pwmDelta;
-    }  
+      pwm2 = pwm2 - pwmDelta;
+    }
   }else if(shouldStopM2 == 1)
   {
     if(pwm2>0)
-      pwm2=pwm2-pwmDelta;
+      pwm2 = pwm2 - pwmDelta;
     else if(pwm2<0)
-      pwm2=pwm2+pwmDelta;
+      pwm2 = pwm2 + pwmDelta;
     else
       shouldStopM2 = 0;
   }
@@ -802,5 +907,30 @@ void move(){
       ledcAnalogWrite(LEDC_CHANNEL_3, abs(pwm2), pwmValueMax);
       //Serial.printf("pwm2: %d\n", pwm2);
   }
-
 }
+
+void reportJson()
+{
+  StaticJsonBuffer<400> JSONbuffer;
+  JsonObject& JSONencoder = JSONbuffer.createObject();
+  JSONencoder["encoder1_value"] = encoder1_value;
+  JSONencoder["encoder2_value"] = encoder2_value;
+  JSONencoder["pwm1"] = pwm1;
+  JSONencoder["pwm2"] = pwm2;
+  JSONencoder["target1"] = target1;
+  JSONencoder["target2"] = target2;
+  JSONencoder["output1"] = output1;
+  JSONencoder["output2"] = output2;
+  JSONencoder["pwm2"] = pwm2;  JSONencoder["esp32_heap"] = ESP.getFreeHeap();
+  /*
+  JsonArray& values = JSONencoder.createNestedArray("values");
+  values.add(20);
+  values.add(21);
+  values.add(23);
+  */
+  char JSONmessageBuffer[400];
+  //JSONencoder.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+  JSONencoder.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
+  ws.textAll(JSONmessageBuffer);
+}
+

@@ -10,20 +10,26 @@
   </head>
   <body>
 
-    <h1>Motor controller</h1>
-    <input id="gCodeCmd1" onkeypress="return searchKeyPress1(event);" value="X5000 Y5000 Z5000 E5000" size="30" type="text">
+    <h1>DOUBLE Motor controller</h1>
+    <input id="gCodeCmd1" onkeypress="return searchKeyPress1(event);" value="target1=700" size="30" type="text">
     <input id="btn1" value="Send" onclick="doSend(document.getElementById('gCodeCmd1'));" type="button">
 	
 	<table border="1">
-	<tbody><tr><td><object id="gotop 1" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gotop 2" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
-	<tr><td><object id="pwm_m1_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
-	<tr><td id='motor1_pos'></td><td></td><td id='motor2_pos'></td></tr>
-	<tr><td><object id="pwm_m1_right" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_right" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
-	<tr><td><object id="gobottom 1" data="48px-Gnome-go-bottom.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gobottom 2" data="48px-Gnome-go-bottom.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
+	<tbody><tr><td></td><td><object id="gotop 1" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gotop 2" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
+	<tr><td></td><td><object id="pwm_m1_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
+	<tr><td>encoder</td><td id='encoder1_value'></td><td></td><td id='encoder2_value'></td></tr>
+	<tr><td>target</td><td id='target1'></td><td></td><td id='target2'></td></tr>
+	<tr><td>output</td><td id='output1'></td><td></td><td id='output2'></td></tr>
+	<tr><td>pwm</td><td id='pwm1'></td><td></td><td id='pwm2'></td></tr>
+	<tr><td></td><td><object id="pwm_m1_right" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_right" data="48px-Gnome-go-down.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
+	<tr><td></td><td><object id="gobottom 1" data="48px-Gnome-go-bottom.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gobottom 2" data="48px-Gnome-go-bottom.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
 	</tbody></table>
 	
-	
-	
+<p>
+Esp32 free heap: <a id="esp32_heap"></a><br>
+<input type="checkbox" checked="checked" id="enablePID" name="enablePID" onclick="handleEnablePID(this);" value="Bike">Pid enabled
+
+</p>
     <p>
 	<button onclick="doSendCommand('status')" type="button">Status</button> 
 	<button onclick="doSendCommand('gdfvdsstatus')" type="button">GDF VDS Status</button> 

@@ -3,8 +3,6 @@ var websocket;
 
 var output;
 
-var xmlhttp = new XMLHttpRequest();
-
 function searchKeyPress2(e)
 {
 	// look for window.event in case event isn't passed in
@@ -17,12 +15,12 @@ function searchKeyPress2(e)
 	return true;
 }
 
-function handleEnableMotors(cb)
+function handleEnablePID(cb)
 {
 	if(cb.checked)
-		doSendCommand("enable");
+		doSendCommand("enablePid");
 	else
-		doSendCommand("disable");
+		doSendCommand("disablePid");
 }
 
 function searchKeyPress1(e)
@@ -41,19 +39,6 @@ function init()
 {
 	output = parent.document.getElementById("output");
 	testWebSocket();
-
-	xmlhttp.onreadystatechange = function() {
-		if (this.readyState == 4 && this.status == 200) {
-			myObj = JSON.parse(this.responseText);
-			txt += "<select>"
-			for (x in myObj) {
-				txt += "<option>" + myObj[x].name;
-			}
-			txt += "</select>"
-			document.getElementById("demo").innerHTML = txt;
-		}
-	}
-	makePeriodicJsonReq();
 }
 function testWebSocket()
 {
@@ -80,27 +65,46 @@ function onClose(evt)
 
 function onMessage(evt)
 {
-	var allData = evt.data.split('\n');
-	//writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received:</span>');
-	for(i=0; i<allData.length; i++)
-	{
-		if(allData[i].startsWith("wifi ", 0))
+	if(evt.data.startsWith("{"))
 		{
-			writeToScreen("<span id='wifi" + i +"'>" + allData[i].split(' ')[1] + "</span><input id='pass" + i + "' width='300px'></input><button onclick='wifiConnect(" + i + ")'>Connect</button>");
+			var obj = JSON.parse(evt.data);
+			//document.getElementById("encoder1_value").innerHTML = obj.encoder1_value;
+			//document.getElementById("encoder2_value").innerHTML = obj.encoder2_value;
+			//document.getElementById("esp32_heap").innerHTML = obj.esp32_heap;
+			
+			for(var propertyName in obj) {
+			   // propertyName is what you want
+			   // you can get the value like this: myObject[propertyName]
+			   if(document.getElementById(propertyName) != null)
+			   {
+					document.getElementById(propertyName).innerHTML = obj[propertyName];
+			   }
+			}			
 		}
-		else
-		{
-			writeToScreen('<span style="color: blue;">'+allData[i]+'</span>');
-		}
-	}
-	var res = evt.data.split(' ');
-	if (res.length==2 && res[0] == 'motor1_pos')
+	else
 	{
-		document.getElementById("motor1_pos").textContent = res[1];
-	}
-	if (res.length==2 && res[0] == 'motor2_pos')
-	{		
-		document.getElementById("motor2_pos").textContent = res[1];
+		var allData = evt.data.split('\n');
+		//writeToScreen('<span style="color: blue;">Time: ' + ((new Date()).getTime()-currentTimeMs) +'ms Received:</span>');
+		for(i=0; i<allData.length; i++)
+		{
+			if(allData[i].startsWith("wifi ", 0))
+			{
+				writeToScreen("<span id='wifi" + i +"'>" + allData[i].split(' ')[1] + "</span><input id='pass" + i + "' width='300px'></input><button onclick='wifiConnect(" + i + ")'>Connect</button>");
+			}
+			else
+			{
+				writeToScreen('<span style="color: blue;">'+allData[i]+'</span>');
+			}
+		}
+		var res = evt.data.split(' ');
+		if (res.length==2 && res[0] == 'motor1_pos')
+		{
+			document.getElementById("motor1_pos").textContent = res[1];
+		}
+		if (res.length==2 && res[0] == 'motor2_pos')
+		{		
+			document.getElementById("motor2_pos").textContent = res[1];
+		}
 	}
 }
 
@@ -161,12 +165,3 @@ function endsWith(str, suffix) {
 }
 
 window.addEventListener("load", init, false);
-
-function makePeriodicJsonReq() {
-	obj = { "table":"customers", "limit":20 };
-	dbParam = JSON.stringify(obj);
-	xmlhttp.open("POST", "/json", true);
-	xmlhttp.setRequestHeader("Content-type", "application/x-www-form-urlencoded");
-	xmlhttp.send("x=" + dbParam);
-	setTimeout(makePeriodicJsonReq, 3000);
-}

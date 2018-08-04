@@ -1,60 +1,55 @@
 #include <driver/adc.h>
-#include "AiEsp32RotaryEncoder.h"
 
 #include "MiniPID.h"
 
 #include <Preferences.h>
 
-#define ROTARY_ENCODER1_A_PIN 16
-#define ROTARY_ENCODER1_B_PIN 4
-#define ROTARY_ENCODER2_A_PIN 17
-#define ROTARY_ENCODER2_B_PIN 5
+#include "AiEsp32RotaryEncoder.h"
 
-AiEsp32RotaryEncoder rotaryEncoder1 = AiEsp32RotaryEncoder(ROTARY_ENCODER1_A_PIN, ROTARY_ENCODER1_B_PIN, -1, -1);
-AiEsp32RotaryEncoder rotaryEncoder2 = AiEsp32RotaryEncoder(ROTARY_ENCODER2_A_PIN, ROTARY_ENCODER2_B_PIN, -1, -1);
+extern AiEsp32RotaryEncoder rotaryEncoder2;
+extern AiEsp32RotaryEncoder rotaryEncoder1;
+
 extern Preferences preferences;
-int16_t encoder1_value;
-int16_t encoder2_value;
+extern int16_t encoder1_value;
+extern int16_t encoder2_value;
+extern double output1, output2;
 
-MiniPID pid1=MiniPID(1,0,0);
-MiniPID pid2=MiniPID(1,0,0);
+MiniPID pid1=MiniPID(0.0,0.0,0.0);
+MiniPID pid2=MiniPID(0.0,0.0,0.0);
 
 int16_t pwmValueMax = 1024;
 
-double target1, target2;
-double output1, output2;
-
-
-void workLoad()
-{
-  /*
-  long l=0;
-  double r;
-  for(long j=0;j<10000;j=j+1)
-  {
-    l=l+1;
-    r= random(0,100) * random(0,100) / random(0,100); 
-  }*/
-  int an1 = analogRead( ADC1_CHANNEL_6_GPIO_NUM  );
-  int an2 = analogRead( ADC1_CHANNEL_7_GPIO_NUM  );
-  //Serial.printf("%u %u %d %d\n", an1, an2, rotaryEncoder1.readEncoder(), rotaryEncoder2.readEncoder());
-}
-
+extern double target1, target2;
+extern bool pidEnabled;
+extern int16_t pwm1, pwm2;
 
 void Task1( void * parameter )
 {
+  /*
   preferences.begin("settings", false);
-  //preferences.putInt("encoder1_value", 0);
-  //preferences.putInt("encoder2_value", 0);
   encoder1_value=preferences.getInt("encoder1_value");
   encoder2_value=preferences.getInt("encoder2_value");
   preferences.end();
+  */
 
+	rotaryEncoder2.begin();
+  rotaryEncoder2.setup([]{rotaryEncoder2.readEncoder_ISR();});
+  
   rotaryEncoder1.begin();
-  rotaryEncoder2.begin();
+  rotaryEncoder1.setup([]{rotaryEncoder1.readEncoder_ISR();});
 
-  pid1.setOutputRampRate(0.2);
-  pid2.setOutputRampRate(0.2);
+  rotaryEncoder1.setBoundaries(-10000,10000,false);
+  rotaryEncoder2.setBoundaries(-10000,10000,false);
+
+  //pid1.setOutputRampRate(10);
+  //pid2.setOutputRampRate(10);
+  pid1.setDirection(true);
+  pid2.setDirection(true);
+  pid1.setPID(1,0.1,0.0,0);
+  pid2.setPID(1,0.1,0.0,0 );
+
+  pid1.setOutputLimits(-1024.0, 1024.0);
+  pid2.setOutputLimits(-1024.0, 1024.0);
 //  pid1.setOutputFilter(1);
 //  pid2.setOutputFilter(1);
 
@@ -62,11 +57,17 @@ void Task1( void * parameter )
   unsigned long start;
   long delta;
   for (;;) {
-    workLoad();
+    //int an1 = analogRead( ADC1_CHANNEL_6_GPIO_NUM  );
+    //int an2 = analogRead( ADC1_CHANNEL_7_GPIO_NUM  );
 
     // save encoder position if position changed
+  
+    encoder1_value = rotaryEncoder1.readEncoder();
+    output1=pid1.getOutput((float)rotaryEncoder1.readEncoder(), target1);
+    /*
     if(rotaryEncoder1.encoderChanged()>0)
     {
+      encoder1_value = rotaryEncoder1.readEncoder();
       start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
       preferences.begin("settings", false);
       preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
@@ -74,12 +75,15 @@ void Task1( void * parameter )
       delta = micros() - start;
       if(delta>20)
         Serial.printf("Preferences save completed in %u us.\n", delta);
-
-      output1=pid1.getOutput((float)rotaryEncoder1.readEncoder(), target1);
     }
+    */
 
+    encoder2_value = rotaryEncoder2.readEncoder();
+    output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
+    /*
     if(rotaryEncoder2.encoderChanged()>0)
     {
+      encoder2_value = rotaryEncoder2.readEncoder();
       start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
       preferences.begin("settings", false);
       preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
@@ -90,8 +94,15 @@ void Task1( void * parameter )
 
       output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
     }
+    */
 
-    vTaskDelay(1);
+  if(pidEnabled)
+  {
+    pwm1 = (int)output1;
+    pwm2 = (int)output2;
+  }
+
+  vTaskDelay(10 / portTICK_PERIOD_MS);
  }
 }
 

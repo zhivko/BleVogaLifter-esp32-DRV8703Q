@@ -102,7 +102,7 @@ void Task1( void * parameter )
     pwm2 = (int)output2;
   }
 
-  vTaskDelay(10 / portTICK_PERIOD_MS);
+  vTaskDelay(100 / portTICK_PERIOD_MS);
  }
 }
 

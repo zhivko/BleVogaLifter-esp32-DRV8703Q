@@ -41,12 +41,14 @@ void Task1( void * parameter )
   rotaryEncoder1.setBoundaries(-10000,10000,false);
   rotaryEncoder2.setBoundaries(-10000,10000,false);
 
-  //pid1.setOutputRampRate(10);
-  //pid2.setOutputRampRate(10);
-  pid1.setDirection(true);
-  pid2.setDirection(true);
-  pid1.setPID(1,0.1,0.0,0);
-  pid2.setPID(1,0.1,0.0,0 );
+  pid1.setOutputRampRate(120);
+  pid2.setOutputRampRate(120);
+  pid1.setOutputFilter(0.1);
+  pid2.setOutputFilter(0.1);
+  //pid1.setDirection(false);
+  //pid2.setDirection(false);
+  pid1.setPID(60, 6, 3, 1);
+  pid2.setPID(60, 6, 3, 1);
 
   pid1.setOutputLimits(-1024.0, 1024.0);
   pid2.setOutputLimits(-1024.0, 1024.0);

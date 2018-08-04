@@ -11,8 +11,12 @@
   <body>
 
     <h1>DOUBLE Motor controller</h1>
-    <input id="gCodeCmd1" onkeypress="return searchKeyPress1(event);" value="target1=700" size="30" type="text">
+    <input id="gCodeCmd1" onkeypress="return searchKeyPress1(event);" value="target1=200 target2=200" size="30" type="text">
     <input id="btn1" value="Send" onclick="doSend(document.getElementById('gCodeCmd1'));" type="button">
+	<br>
+    <input id="gCodeCmd2" onkeypress="return searchKeyPress1(event);" value="target1=0 target2=0" size="30" type="text">
+    <input id="btn2" value="Send" onclick="doSend(document.getElementById('gCodeCmd2'));" type="button">
+	<br>
 	
 	<table border="1">
 	<tbody><tr><td></td><td><object id="gotop 1" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gotop 2" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>

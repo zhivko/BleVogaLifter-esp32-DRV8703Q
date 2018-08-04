@@ -6,3 +6,6 @@ This is Atom Platformio project for ESP32 firmware used to communicate with gate
 Gate driver:  http://www.ti.com/product/drv8702-q1?qgpn=drv8702-q1
 
 MCU Esp32:    https://en.wikipedia.org/wiki/ESP32
+
+
+[Schematic.pdf](documentation/schematic.pdf)

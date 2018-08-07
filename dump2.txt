@@ -1,12 +1,12 @@
 Guru Meditation Error: Core  0 panic'ed (Cache disabled but cached memory region accessed)
 Core 0 register dump:
-PC      : 0x400d2324  PS      : 0x00060034  A0      : 0x40081fb0  A1      : 0x3ffc05f0
-A2      : 0x00000010  A3      : 0x3ffc483c  A4      : 0x00000000  A5      : 0x00010000
-A6      : 0x00000000  A7      : 0x13002249  A8      : 0x8008158c  A9      : 0x00000001
-A10     : 0x00060220  A11     : 0x00000000  A12     : 0x3ffc5724  A13     : 0x00001004
-A14     : 0x3ffc5724  A15     : 0xffffeffb  SAR     : 0x0000001e  EXCCAUSE: 0x00000007
-EXCVADDR: 0x00000000  LBEG    : 0x00000000  LEND    : 0x00000000  LCOUNT  : 0x00000000
+PC      : 0x400d25c4  PS      : 0x00060034  A0      : 0x40081bfc  A1      : 0x3ffc05f0
+A2      : 0x00000005  A3      : 0x3ffc47b0  A4      : 0x00000000  A5      : 0x00000020
+A6      : 0x00000001  A7      : 0x700000eb  A8      : 0x800811d8  A9      : 0xd0000040
+A10     : 0x0160a000  A11     : 0x00000007  A12     : 0x00000000  A13     : 0x00000000
+A14     : 0x3ff42000  A15     : 0x700000eb  SAR     : 0x0000001a  EXCCAUSE: 0x00000007
+EXCVADDR: 0x00000000  LBEG    : 0x4000c2e0  LEND    : 0x4000c2f6  LCOUNT  : 0xffffffff
 Core 0 was running in ISR context:
-EPC1    : 0x40082ec7  EPC2    : 0x00000000  EPC3    : 0x00000000  EPC4    : 0x400d2324
+EPC1    : 0x400621ed  EPC2    : 0x00000000  EPC3    : 0x00000000  EPC4    : 0x400d25c4
 
-Backtrace: 0x400d2324:0x3ffc05f0 0x40081fad:0x3ffc0610 0x40082ec4:0x00000000
+Backtrace: 0x400d25c4:0x3ffc05f0 0x40081bf9:0x3ffc0610 0x400621ea:0x00000000

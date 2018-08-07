@@ -18,6 +18,7 @@
 #include <ArduinoJson.h>
 
 #include <Preferences.h>
+#include "nvs_flash.h"
 
 String ssid;
 String password;
@@ -678,15 +679,27 @@ void blink(int i)
 
 
 void setup(){
-  blink(1);
+
+  
 
   Serial.begin(115200);
   Serial.print("ESP ChipSize:");
   Serial.println(ESP.getFlashChipSize());
 
+  if(nvs_flash_init() != ESP_OK){
+    Serial.println("Flash init FAILED!");
+  }
+  else
+    Serial.println("Flash init OK.");
+
+
+
   pinMode(LED_PIN, OUTPUT);
   pinMode(SS1, OUTPUT);     // Slave select first gate driver
   pinMode(SS2, OUTPUT);     // Slave select second gate driver
+
+  blink(1);
+
 
   digitalWrite(SS1, HIGH);   // deselect gate driver 1 - CS to HIGH
   digitalWrite(SS2, HIGH);   // deselect gate driver 2 - CS to HIGH
@@ -815,26 +828,39 @@ void setup(){
   mover.attach_ms(10, move);
   jsonReporter.attach_ms(500, reportJson);
 
- xTaskCreatePinnedToCore(
-   Task1,                  // pvTaskCode
-   "Workload1",            // pcName
-   4096,                   // usStackDepth 
-   NULL,                   // pvParameters
-   1,                      // uxPriority
-   &TaskA,                 // pxCreatedTask
-   0);                     // xCoreID 
+  /*
+  preferences.begin("settings", false);
+  encoder1_value=preferences.getInt("encoder1_value");
+  encoder2_value=preferences.getInt("encoder2_value");
+  preferences.end();
+  rotaryEncoder1.reset(encoder1_value);
+  target1 = encoder1_value;
+  rotaryEncoder2.reset(encoder2_value);
+  target2 = encoder2_value;  
+  */
+
+  xTaskCreatePinnedToCore(
+    Task1,                  // pvTaskCode
+    "Workload1",            // pcName
+    4096,                   // usStackDepth 
+    NULL,                   // pvParameters
+    1,                      // uxPriority
+    &TaskA,                 // pxCreatedTask
+    0);                     // xCoreID 
 
 
   Serial.println("Gate driver ON");
   digitalWrite(GATEDRIVER_PIN, HIGH);  //enable gate drivers
   Serial.println("Gate driver ON...Done.");
+
+    
   blink(5);
 
 }
 
 void loop(){
   ArduinoOTA.handle();
-  vTaskDelay(10 / portTICK_PERIOD_MS);
+  vTaskDelay(20 / portTICK_PERIOD_MS);
 }
 
 void move(){
@@ -911,6 +937,18 @@ void move(){
 
 void reportJson()
 {
+	//portENTER_CRITICAL_ISR(&(rotaryEncoder1.mux));
+	//portENTER_CRITICAL_ISR(&(rotaryEncoder2.mux));
+
+  /*
+  JsonArray& values = JSONencoder.createNestedArray("values");
+  values.add(20);
+  values.add(21);
+  values.add(23);
+  */
+
+/*
+  char JSONmessageBuffer[400];
   StaticJsonBuffer<400> JSONbuffer;
   JsonObject& JSONencoder = JSONbuffer.createObject();
   JSONencoder["encoder1_value"] = encoder1_value;
@@ -921,16 +959,88 @@ void reportJson()
   JSONencoder["target2"] = target2;
   JSONencoder["output1"] = output1;
   JSONencoder["output2"] = output2;
-  JSONencoder["pwm2"] = pwm2;  JSONencoder["esp32_heap"] = ESP.getFreeHeap();
-  /*
-  JsonArray& values = JSONencoder.createNestedArray("values");
-  values.add(20);
-  values.add(21);
-  values.add(23);
-  */
-  char JSONmessageBuffer[400];
+  JSONencoder["pwm2"] = pwm2;  
+  JSONencoder["esp32_heap"] = ESP.getFreeHeap();  
   //JSONencoder.prettyPrintTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
   JSONencoder.printTo(JSONmessageBuffer, sizeof(JSONmessageBuffer));
-  ws.textAll(JSONmessageBuffer);
+*/
+
+  if(ws.count()>0)
+  {
+    String txtToSend = "";
+    txtToSend.concat("{");
+
+    txtToSend.concat("\"encoder1_value\":");
+    txtToSend.concat(encoder1_value);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"encoder2_value\":");
+    txtToSend.concat(encoder2_value);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"pwm1\":");
+    txtToSend.concat(pwm1);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"pwm2\":");
+    txtToSend.concat(pwm2);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"target1\":");
+    txtToSend.concat(target1);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"target2\":");
+    txtToSend.concat(target2);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"output1\":");
+    txtToSend.concat(output1);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"output2\":");
+    txtToSend.concat(output2);
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"esp32_heap\":");
+    txtToSend.concat(ESP.getFreeHeap());
+    txtToSend.concat("}");
+
+    //ws.textAll(JSONmessageBuffer); 
+    ws.textAll(txtToSend.c_str());
+  }
+
+  unsigned long start;
+  long delta;
+
+  long randNumber = random(0, 10);
+
+  if(rotaryEncoder1.encoderChanged()>0 || randNumber>5)
+  {
+    encoder1_value = rotaryEncoder1.readEncoder();
+    start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
+    preferences.begin("settings", false);
+    preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
+    preferences.end();
+    delta = micros() - start;
+    if(delta>20)
+      Serial.printf("Preferences save completed in %u us.\n", delta);
+  }
+  if(rotaryEncoder2.encoderChanged()>0 || randNumber>5)
+  {
+    encoder2_value = rotaryEncoder2.readEncoder();
+    start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
+    preferences.begin("settings", false);
+    preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
+    preferences.end();
+    delta = micros() - start;
+    if(delta>20)
+      Serial.printf("Preferences save completed in %lu us.\n", delta);
+
+    output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
+  }
+
+	//portEXIT_CRITICAL_ISR(&(rotaryEncoder1.mux));
+  //portEXIT_CRITICAL_ISR(&(rotaryEncoder2.mux));
 }
 

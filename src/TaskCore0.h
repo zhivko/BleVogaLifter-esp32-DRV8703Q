@@ -25,13 +25,6 @@ extern int16_t pwm1, pwm2;
 
 void Task1( void * parameter )
 {
-  /*
-  preferences.begin("settings", false);
-  encoder1_value=preferences.getInt("encoder1_value");
-  encoder2_value=preferences.getInt("encoder2_value");
-  preferences.end();
-  */
-
 	rotaryEncoder2.begin();
   rotaryEncoder2.setup([]{rotaryEncoder2.readEncoder_ISR();});
   
@@ -47,8 +40,8 @@ void Task1( void * parameter )
   pid2.setOutputFilter(0.1);
   //pid1.setDirection(false);
   //pid2.setDirection(false);
-  pid1.setPID(60, 6, 3, 1);
-  pid2.setPID(60, 6, 3, 1);
+  pid1.setPID(60, 5, 3, 2);
+  pid2.setPID(60, 5, 3, 2);
 
   pid1.setOutputLimits(-1024.0, 1024.0);
   pid2.setOutputLimits(-1024.0, 1024.0);
@@ -56,8 +49,6 @@ void Task1( void * parameter )
 //  pid2.setOutputFilter(1);
 
 
-  unsigned long start;
-  long delta;
   for (;;) {
     //int an1 = analogRead( ADC1_CHANNEL_6_GPIO_NUM  );
     //int an2 = analogRead( ADC1_CHANNEL_7_GPIO_NUM  );
@@ -65,38 +56,10 @@ void Task1( void * parameter )
     // save encoder position if position changed
   
     encoder1_value = rotaryEncoder1.readEncoder();
-    output1=pid1.getOutput((float)rotaryEncoder1.readEncoder(), target1);
-    /*
-    if(rotaryEncoder1.encoderChanged()>0)
-    {
-      encoder1_value = rotaryEncoder1.readEncoder();
-      start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-      preferences.begin("settings", false);
-      preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
-      preferences.end();
-      delta = micros() - start;
-      if(delta>20)
-        Serial.printf("Preferences save completed in %u us.\n", delta);
-    }
-    */
-
+    output1=pid1.getOutput((float)rotaryEncoder1.readEncoder(), target1);    
     encoder2_value = rotaryEncoder2.readEncoder();
     output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
-    /*
-    if(rotaryEncoder2.encoderChanged()>0)
-    {
-      encoder2_value = rotaryEncoder2.readEncoder();
-      start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-      preferences.begin("settings", false);
-      preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
-      preferences.end();
-      delta = micros() - start;
-      if(delta>20)
-        Serial.printf("Preferences save completed in %lu us.\n", delta);
 
-      output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
-    }
-    */
 
   if(pidEnabled)
   {
@@ -104,7 +67,7 @@ void Task1( void * parameter )
     pwm2 = (int)output2;
   }
 
-  vTaskDelay(100 / portTICK_PERIOD_MS);
+  vTaskDelay(15 / portTICK_PERIOD_MS);
  }
 }
 

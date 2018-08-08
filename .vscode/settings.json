@@ -14,6 +14,7 @@
         "xhash": "cpp",
         "xtree": "cpp",
         "array": "cpp",
-        "unordered_map": "cpp"
+        "unordered_map": "cpp",
+        "limits": "cpp"
     }
 }

@@ -106,6 +106,9 @@ bool pidEnabled = true;
 AiEsp32RotaryEncoder rotaryEncoder2 = AiEsp32RotaryEncoder(ROTARY_ENCODER2_A_PIN, ROTARY_ENCODER2_B_PIN, -1, -1);
 AiEsp32RotaryEncoder rotaryEncoder1 = AiEsp32RotaryEncoder(ROTARY_ENCODER1_A_PIN, ROTARY_ENCODER1_B_PIN, -1, -1);
 
+// 
+
+
 
 void ledcAnalogWrite(uint8_t channel, uint32_t value, uint32_t valueMax = pwmValueMax) {
   /*
@@ -535,24 +538,24 @@ void processWsData(char *data, AsyncWebSocketClient* client)
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if(type == WS_EVT_CONNECT){
     //client connected
-    printf("ws[%s][%u] connect\n", server->url(), client->id());
+    printf("%d ws[%s][%u] connect\n", millis(), server->url(), client->id());
     client->printf("Hello Client %u :)", client->id());
     client->ping();
   } else if(type == WS_EVT_DISCONNECT){
     //client disconnected
-    printf("ws[%s][%u] disconnect\n", server->url(), client->id());
+    printf("%d ws[%s][%u] disconnect\n", millis(), server->url(), client->id());
   } else if(type == WS_EVT_ERROR){
     //error was received from the other end
-    printf("ws[%s][%u] error(%u): %s\n", server->url(), client->id(), *((uint16_t*)arg), (char*)data);
+    printf("%d ws[%s][%u] error(%u): %s\n", millis(), server->url(), client->id(), *((uint16_t*)arg), (char*)data);
   } else if(type == WS_EVT_PONG){
     //pong message was received (in response to a ping request maybe)
-    printf("ws[%s][%u] pong[%u]: %s\n", server->url(), client->id(), len, (len)?(char*)data:"");
+    printf("%d ws[%s][%u] pong[%u]: %s\n", millis(), server->url(), client->id(), len, (len)?(char*)data:"");
   } else if(type == WS_EVT_DATA){
     //data packet
     AwsFrameInfo * info = (AwsFrameInfo*)arg;
     if(info->final && info->index == 0 && info->len == len){
       //the whole message is in a single frame and we got all of it's data
-      printf("ws[%s][%u] %s-message[%llu]: ", server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
+      printf("%d ws[%s][%u] %s-message[%llu]: ", millis(), server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
       if(info->opcode == WS_TEXT){
         data[len] = 0;
         printf("%s\n", (char*)data);
@@ -575,11 +578,11 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
       //message is comprised of multiple frames or the frame is split into multiple packets
       if(info->index == 0){
         if(info->num == 0)
-          printf("ws[%s][%u] %s-message start\n", server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
-        printf("ws[%s][%u] frame[%u] start[%llu]\n", server->url(), client->id(), info->num, info->len);
+          printf("%d ws[%s][%u] %s-message start\n", millis(), server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
+        printf("%d ws[%s][%u] frame[%u] start[%llu]\n", millis(), server->url(), client->id(), info->num, info->len);
       }
 
-      printf("ws[%s][%u] frame[%u] %s[%llu - %llu]: ", server->url(), client->id(), info->num, (info->message_opcode == WS_TEXT)?"text":"binary", info->index, info->index + len);
+      printf("%d ws[%s][%u] frame[%u] %s[%llu - %llu]: ", millis(), server->url(), client->id(), info->num, (info->message_opcode == WS_TEXT)?"text":"binary", info->index, info->index + len);
       if(info->message_opcode == WS_TEXT){
         printf("%s\n", (char*)data);
       } else {
@@ -590,9 +593,9 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
       }
 
       if((info->index + len) == info->len){
-        printf("ws[%s][%u] frame[%u] end[%llu]\n", server->url(), client->id(), info->num, info->len);
+        printf("%d ws[%s][%u] frame[%u] end[%llu]\n", millis(), server->url(), client->id(), info->num, info->len);
         if(info->final){
-          printf("ws[%s][%u] %s-message end\n", server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
+          printf("%d ws[%s][%u] %s-message end\n", millis(), server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
 /*
           if(info->message_opcode == WS_TEXT)
             client->text("I got your text message");
@@ -698,7 +701,8 @@ void setup(){
   pinMode(SS1, OUTPUT);     // Slave select first gate driver
   pinMode(SS2, OUTPUT);     // Slave select second gate driver
 
-  blink(1);
+  vTaskDelay(3 / portTICK_PERIOD_MS);
+  blink(2);
 
 
   digitalWrite(SS1, HIGH);   // deselect gate driver 1 - CS to HIGH
@@ -824,20 +828,43 @@ void setup(){
                     1,                // Priority of the task.
                     NULL);            // Task handle. 
 */
+  rotaryEncoder1.setBoundaries(-10000, 10000, false);
+  rotaryEncoder2.setBoundaries(-10000, 10000, false);
 
-  mover.attach_ms(10, move);
-  jsonReporter.attach_ms(500, reportJson);
-
-  /*
-  preferences.begin("settings", false);
+  preferences.begin("settings", true);
   encoder1_value=preferences.getInt("encoder1_value");
   encoder2_value=preferences.getInt("encoder2_value");
-  preferences.end();
+
   rotaryEncoder1.reset(encoder1_value);
-  target1 = encoder1_value;
+  Serial.println(rotaryEncoder1.readEncoder());  
   rotaryEncoder2.reset(encoder2_value);
-  target2 = encoder2_value;  
-  */
+  Serial.println(rotaryEncoder2.readEncoder());  
+
+  if(abs(preferences.getInt("target1") - encoder1_value)>100)
+    target1 = (double)encoder1_value;
+  else
+    target1 = (double)preferences.getInt("target1");
+  
+  if(abs(preferences.getInt("target2") - encoder2_value)>100)
+    target2 = (double)encoder2_value;
+  else
+    target2 = (double)preferences.getInt("target2");
+
+  Serial.print("encoder1_value: ");
+  Serial.print(encoder1_value);
+  Serial.print(" ");
+  Serial.print(rotaryEncoder1.readEncoder());
+  Serial.print(" target1: ");
+  Serial.println(target1);
+
+  Serial.print("encoder2_value: ");
+  Serial.print(encoder2_value);
+  Serial.print(" ");
+  Serial.print(rotaryEncoder2.readEncoder());
+  Serial.print(" target2: ");
+  Serial.println(target2);
+
+  preferences.end();
 
   xTaskCreatePinnedToCore(
     Task1,                  // pvTaskCode
@@ -852,6 +879,9 @@ void setup(){
   Serial.println("Gate driver ON");
   digitalWrite(GATEDRIVER_PIN, HIGH);  //enable gate drivers
   Serial.println("Gate driver ON...Done.");
+
+  mover.attach_ms(10, move);
+  jsonReporter.attach_ms(2000, reportJson);
 
     
   blink(5);
@@ -1008,6 +1038,7 @@ void reportJson()
 
     //ws.textAll(JSONmessageBuffer); 
     ws.textAll(txtToSend.c_str());
+    
   }
 
   unsigned long start;
@@ -1015,30 +1046,37 @@ void reportJson()
 
   long randNumber = random(0, 10);
 
-  if(rotaryEncoder1.encoderChanged()>0 || randNumber>5)
-  {
-    encoder1_value = rotaryEncoder1.readEncoder();
-    start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-    preferences.begin("settings", false);
-    preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
-    preferences.end();
-    delta = micros() - start;
-    if(delta>20)
-      Serial.printf("Preferences save completed in %u us.\n", delta);
-  }
-  if(rotaryEncoder2.encoderChanged()>0 || randNumber>5)
-  {
-    encoder2_value = rotaryEncoder2.readEncoder();
-    start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-    preferences.begin("settings", false);
-    preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
-    preferences.end();
-    delta = micros() - start;
-    if(delta>20)
-      Serial.printf("Preferences save completed in %lu us.\n", delta);
+  //if(abs(pwm1<100) && abs(pwm2<100))
+  //{
+    if(rotaryEncoder1.encoderChanged()!=0)
+    {
+      Serial.println("Saving to flash enc1.");
+      encoder1_value = rotaryEncoder1.readEncoder();
+      start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
+      preferences.begin("settings", false);
+      preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
+      preferences.putInt("target1", (int)target1);
+      preferences.end();
+      delta = micros() - start;
+      if(delta>20)
+        Serial.printf("Preferences save completed in %u us.\n", delta);
+    }
+    if(rotaryEncoder2.encoderChanged()!=0)
+    {
+      Serial.println("Saving to flash enc2.");
+      encoder2_value = rotaryEncoder2.readEncoder();
+      start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
+      preferences.begin("settings", false);
+      preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
+      preferences.putInt("target2", (int)target2);
+      preferences.end();
+      delta = micros() - start;
+      if(delta>20)
+        Serial.printf("Preferences save completed in %lu us.\n", delta);
 
-    output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
-  }
+      output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
+    }
+  //}
 
 	//portEXIT_CRITICAL_ISR(&(rotaryEncoder1.mux));
   //portEXIT_CRITICAL_ISR(&(rotaryEncoder2.mux));

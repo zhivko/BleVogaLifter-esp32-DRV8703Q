@@ -13,21 +13,20 @@ extern AiEsp32RotaryEncoder rotaryEncoder2;
 extern AiEsp32RotaryEncoder rotaryEncoder1;
 
 extern Preferences preferences;
-extern int16_t encoder1_value;
-extern int16_t encoder2_value;
-extern double output1, output2;
+extern volatile int16_t encoder1_value, encoder2_value;
+extern volatile double output1, output2;
+extern volatile double target1, target2;
+extern volatile int16_t pwm1, pwm2;
 
 uint8_t pwmPositionDelta = 150;
 uint8_t maxPositionDelta = 10;
 
-MiniPID pid1=MiniPID(0.0,0.0,0.0);
-MiniPID pid2=MiniPID(0.0,0.0,0.0);
+extern MiniPID pid1;
+extern MiniPID pid2;
 
 int16_t pwmValueMax = 1024;
 
-extern double target1, target2;
-extern bool pidEnabled;
-extern int16_t pwm1, pwm2;
+extern volatile bool pidEnabled;
 
 /*
 int8_t clip(int8_t n, int8_t lower, int8_t upper) {
@@ -140,20 +139,6 @@ void Task1( void * parameter )
   attachInterrupt(digitalPinToInterrupt(rotaryEncoder2.encoderBPin), readEncoder2_ISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(rotaryEncoder1.encoderAPin), readEncoder1_ISR, CHANGE);
   attachInterrupt(digitalPinToInterrupt(rotaryEncoder1.encoderBPin), readEncoder1_ISR, CHANGE);
-  
-  pid1.setOutputRampRate(5);
-  pid2.setOutputRampRate(5);
-  pid1.setOutputFilter(0.1);
-  pid2.setOutputFilter(0.1);
-  //pid1.setDirection(false);
-  //pid2.setDirection(false);
-  pid1.setPID(32, 11, 25, 0);
-  pid2.setPID(32, 11, 25, 0);
-
-  pid1.setOutputLimits(-1024.0, 1024.0);
-  pid2.setOutputLimits(-1024.0, 1024.0);
-//  pid1.setOutputFilter(1);
-//  pid2.setOutputFilter(1);
 
 
   for (;;) {
@@ -163,19 +148,19 @@ void Task1( void * parameter )
     // save encoder position if position changed
   
     encoder1_value = rotaryEncoder1.readEncoder();
-    output1=pid1.getOutput((float)rotaryEncoder1.readEncoder(), target1);    
     encoder2_value = rotaryEncoder2.readEncoder();
-    output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
+
 
 
     if(pidEnabled)
     {
-      //int8_t deltaPos = encoder1_value - encoder2_value;
-      // deltaPos = clip(deltaPos, -maxPositionDelta, maxPositionDelta);
-      //if(deltaPos != 0)
-      //  Serial.printf("delta = %d\n", deltaPos);
-      //if(abs(deltaPos)<=1)
-      //  deltaPos = 0;
+      int16_t encoderDelta = encoder1_value - encoder2_value;
+      pid1.setPositionDiff(encoderDelta);
+      pid2.setPositionDiff(-encoderDelta);
+      pid1.setSetpoint(target1);
+      pid2.setSetpoint(target2);
+      output1=pid1.getOutput((float)encoder1_value, target1);    
+      output2=pid2.getOutput((float)encoder2_value, target2);      
 
       pwm1 = (int)(output1); //- (deltaPos*1.0 / maxPositionDelta * pwmPositionDelta));
       pwm2 = (int)(output2); //+ (deltaPos*1.0 / maxPositionDelta * pwmPositionDelta));

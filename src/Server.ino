@@ -84,27 +84,30 @@ time_t now;
 struct tm info;
 
 
-int16_t pwm1 = 0;       // how bright the LED is
-int16_t pwm2 = 0;       // how bright the LED is
-int fadeAmount = 1; // how many points to fade the LED by
+volatile int16_t pwm1 = 0;       // how bright the LED is
+volatile int16_t pwm2 = 0;       // how bright the LED is
+volatile int fadeAmount = 1;     // how many points to fade the LED by
 
 String status1;
 String status2;
 String gdfVds1;
 String gdfVds2;
 
-int16_t encoder1_value;
-int16_t encoder2_value;
+volatile int16_t encoder1_value;
+volatile int16_t encoder2_value;
 Ticker mover;
 Ticker jsonReporter;
 TaskHandle_t TaskA;
 
-double output1, output2;
-double target1, target2;
-bool pidEnabled = true;
+volatile double output1, output2;
+volatile double target1, target2;
+volatile bool pidEnabled = true;
 
 AiEsp32RotaryEncoder rotaryEncoder2 = AiEsp32RotaryEncoder(ROTARY_ENCODER2_A_PIN, ROTARY_ENCODER2_B_PIN, -1, -1);
 AiEsp32RotaryEncoder rotaryEncoder1 = AiEsp32RotaryEncoder(ROTARY_ENCODER1_A_PIN, ROTARY_ENCODER1_B_PIN, -1, -1);
+
+MiniPID pid1=MiniPID(0.0,0.0,0.0);
+MiniPID pid2=MiniPID(0.0,0.0,0.0);
 
 // 
 
@@ -463,18 +466,19 @@ void processWsData(char *data, AsyncWebSocketClient* client)
     client->printf("gdfvdsstatus2: %s", gdfVds2.c_str());
   }else if(input.startsWith("clrflt")){
     clearFault();
-    client->printf("Clear Fault done.");
-  }else if(input.startsWith("pwm1=") || input.startsWith("pwm2=")){
-    Serial.println("Parsing pwm1=.. pwm2=... command");
-    String pwm1_str = getToken(input, ' ', 0);
-    String pwm1_duty = getToken(pwm1_str, '=', 1);
-    String pwm2_str = getToken(input, ' ', 1);
-    String pwm2_duty = getToken(pwm2_str, '=', 1);
-    Serial.println("Parsing pwm1=.. pwm2=... command...1");
+    client->printf("Clear Fault done."); 
+  }else if(input.startsWith("p=")){
+    setPidsFromString(input);
+    sendPidToClient();
 
-    pwm1 = pwm1_duty.toInt();
-    pwm2 = pwm2_duty.toInt();
-    Serial.printf("Parsing pwm1=%d pwm2=%d command...2\n", pwm1, pwm2);
+    preferences.begin("settings", false);
+    preferences.putString("pid", input);
+    preferences.end();
+
+
+    //ws.textAll(JSONmessageBuffer); 
+
+    Serial.printf("Parsing pid done.");
   }else if(input.startsWith("target1=") || input.startsWith("target2=")){
     Serial.printf("Parsing target1=.. target2=... command:%s\n",input.c_str());
     String target1_str = getToken(input, ' ', 0);
@@ -488,6 +492,7 @@ void processWsData(char *data, AsyncWebSocketClient* client)
     Serial.print(target1);
     Serial.print(" target2= ");
     Serial.println(target2);
+
   }else if(input.startsWith("enablePid")){
     pidEnabled = true;
   }else if(input.startsWith("disablePid")){
@@ -541,6 +546,7 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
     printf("%d ws[%s][%u] connect\n", millis(), server->url(), client->id());
     client->printf("Hello Client %u :)", client->id());
     client->ping();
+    sendPidToClient();
   } else if(type == WS_EVT_DISCONNECT){
     //client disconnected
     printf("%d ws[%s][%u] disconnect\n", millis(), server->url(), client->id());
@@ -681,10 +687,8 @@ void blink(int i)
 
 
 
-void setup(){
-
-  
-
+void setup()
+{
   Serial.begin(115200);
   Serial.print("ESP ChipSize:");
   Serial.println(ESP.getFlashChipSize());
@@ -746,8 +750,32 @@ void setup(){
   preferences.begin("settings",false);
   ssid = preferences.getString("wifi_ssid");
   password = preferences.getString("wifi_password");
+  String pid_str = preferences.getString("pid","null");
+  if(!pid_str.equals("null"))
+  {
+    Serial.printf("PID from flash: %s\n", pid_str.c_str());
+    setPidsFromString(pid_str);
+  }
+  else
+  {
+    Serial.printf("no PID from flash.\n");
+    pid1.setOutputRampRate(10);
+    pid2.setOutputRampRate(10);
+    //pid1.setOutputFilter(0.1);
+    //pid2.setOutputFilter(0.1);
+    //pid1.setDirection(false);
+    //pid2.setDirection(false);
+    pid1.setPID(70, 40, 10, 0);
+    pid2.setPID(70, 40, 10, 0);
+  //  pid1.setOutputFilter(1);
+  //  pid2.setOutputFilter(1);
+  }
+  pid1.setOutputLimits(-1024.0, 1024.0);
+  pid2.setOutputLimits(-1024.0, 1024.0);
+
   Serial.println("load saved wifi settings...Done.");
   preferences.end();
+
 
   WiFiEventId_t eventID = WiFi.onEvent([](WiFiEvent_t event, WiFiEventInfo_t info){
     Serial.print("WiFi lost connection. Reason: ");
@@ -804,6 +832,10 @@ void setup(){
   // OTA callbacks
   ArduinoOTA.onStart([]() {
     // Clean SPIFFS
+    pidEnabled = false;
+    pwm1=0;
+    pwm2=0;
+
     SPIFFS.end();
 
     jsonReporter.detach();
@@ -840,15 +872,19 @@ void setup(){
   rotaryEncoder2.reset(encoder2_value);
   Serial.println(rotaryEncoder2.readEncoder());  
 
+/*
   if(abs(preferences.getInt("target1") - encoder1_value)>100)
     target1 = (double)encoder1_value;
   else
-    target1 = (double)preferences.getInt("target1");
+*/
+  target1 = (double)preferences.getInt("target1");
   
+  /*
   if(abs(preferences.getInt("target2") - encoder2_value)>100)
     target2 = (double)encoder2_value;
   else
-    target2 = (double)preferences.getInt("target2");
+  */
+  target2 = (double)preferences.getInt("target2");
 
   Serial.print("encoder1_value: ");
   Serial.print(encoder1_value);
@@ -881,7 +917,7 @@ void setup(){
   Serial.println("Gate driver ON...Done.");
 
   mover.attach_ms(10, move);
-  jsonReporter.attach_ms(2000, reportJson);
+  jsonReporter.attach_ms(500, reportJson);
 
     
   blink(5);
@@ -921,11 +957,13 @@ void move(){
   if(pwm1 > 0)
   {
       ledcAnalogWrite(LEDC_CHANNEL_0, pwm1, pwmValueMax);
+      ledcAnalogWrite(LEDC_CHANNEL_1, 0, pwmValueMax);
       //Serial.printf("pwm1: %d\n", pwm1);
   }
   else if(pwm1 < 0)
   {
       ledcAnalogWrite(LEDC_CHANNEL_1, abs(pwm1), pwmValueMax);
+      ledcAnalogWrite(LEDC_CHANNEL_0, 0, pwmValueMax);
       //Serial.printf("pwm1: %d\n", pwm1);
   }
 
@@ -956,11 +994,13 @@ void move(){
   if(pwm2>=0)
   {
       ledcAnalogWrite(LEDC_CHANNEL_2, pwm2, pwmValueMax);
+      ledcAnalogWrite(LEDC_CHANNEL_3, 0, pwmValueMax);
       //Serial.printf("pwm2: %d\n", pwm2);
   }
   else if(pwm2<0)
   {
       ledcAnalogWrite(LEDC_CHANNEL_3, abs(pwm2), pwmValueMax);
+      ledcAnalogWrite(LEDC_CHANNEL_2, 0, pwmValueMax);
       //Serial.printf("pwm2: %d\n", pwm2);
   }
 }
@@ -1032,6 +1072,60 @@ void reportJson()
     txtToSend.concat(output2);
     txtToSend.concat(",");
 
+    txtToSend.concat("\"actual_diff\":");
+    txtToSend.concat(pid1.getActual() - pid2.getActual());
+    txtToSend.concat(",");
+
+    txtToSend.concat("\"PID1output\":");
+    txtToSend.concat("\"Pout=");
+    txtToSend.concat(pid1.getPoutput());
+    txtToSend.concat("<br>Iout=");
+    txtToSend.concat(pid1.getIoutput());
+    txtToSend.concat("<br>Dout=");
+    txtToSend.concat(pid1.getDoutput());
+    txtToSend.concat("<br>Fout=");
+    txtToSend.concat(pid1.getFoutput());
+    txtToSend.concat("<br>POSout=");
+    txtToSend.concat(pid1.getPOSoutput());
+    txtToSend.concat("<br>POSoutF=");
+    txtToSend.concat(pid1.getPOSoutputFiltered());        
+    txtToSend.concat("<br>setpoint=");
+    txtToSend.concat(pid1.getSetpoint());
+    txtToSend.concat("<br>actual=");
+    txtToSend.concat(pid1.getActual());
+    txtToSend.concat("<br>error=");
+    txtToSend.concat(pid1.getError());    
+    txtToSend.concat("<br>errorSum=");
+    txtToSend.concat(pid1.getErrorSum());    
+    txtToSend.concat("<br>maxIOutput=");
+    txtToSend.concat(pid1.getMaxIOutput());    
+    txtToSend.concat("\",");
+
+    txtToSend.concat("\"PID2output\":");
+    txtToSend.concat("\"Pout=");
+    txtToSend.concat(pid2.getPoutput());
+    txtToSend.concat("<br>Iout=");
+    txtToSend.concat(pid2.getIoutput());
+    txtToSend.concat("<br>Dout=");
+    txtToSend.concat(pid2.getDoutput());
+    txtToSend.concat("<br>Fout=");
+    txtToSend.concat(pid2.getFoutput());
+    txtToSend.concat("<br>POSout=");
+    txtToSend.concat(pid2.getPOSoutput());
+    txtToSend.concat("<br>POSoutF=");
+    txtToSend.concat(pid2.getPOSoutputFiltered());
+    txtToSend.concat("<br>setpoint=");
+    txtToSend.concat(pid2.getSetpoint());
+    txtToSend.concat("<br>actual=");
+    txtToSend.concat(pid2.getActual());
+    txtToSend.concat("<br>error=");
+    txtToSend.concat(pid2.getError());
+    txtToSend.concat("<br>errorSum=");
+    txtToSend.concat(pid2.getErrorSum());    
+    txtToSend.concat("<br>maxIOutput=");
+    txtToSend.concat(pid2.getMaxIOutput());    
+    txtToSend.concat("\",");
+
     txtToSend.concat("\"esp32_heap\":");
     txtToSend.concat(ESP.getFreeHeap());
     txtToSend.concat("}");
@@ -1059,7 +1153,7 @@ void reportJson()
       preferences.end();
       delta = micros() - start;
       if(delta>20)
-        Serial.printf("Preferences save completed in %u us.\n", delta);
+        Serial.printf("Preferences save completed in %lu us.\n", delta);
     }
     if(rotaryEncoder2.encoderChanged()!=0)
     {
@@ -1082,3 +1176,68 @@ void reportJson()
   //portEXIT_CRITICAL_ISR(&(rotaryEncoder2.mux));
 }
 
+void setPidsFromString(String input)
+ {
+  Serial.println("Parsing pid...");
+  String p_str = getToken(input, ' ', 0);
+  String p_val = getToken(p_str, '=', 1);
+
+  String i_str = getToken(input, ' ', 1);
+  String i_val = getToken(i_str, '=', 1);
+
+  String d_str = getToken(input, ' ', 2);
+  String d_val = getToken(d_str, '=', 1);
+
+  String f_str = getToken(input, ' ', 3);
+  String f_val = getToken(f_str, '=', 1);    
+
+  String syn_str = getToken(input, ' ', 4);
+  String syn_val = getToken(syn_str, '=', 1);
+
+  String ramp_str = getToken(input, ' ', 5);
+  String ramp_val = getToken(ramp_str, '=', 1);
+  if(ramp_val.equals(""))
+  {
+    ramp_val = "1.0";
+  }
+
+  pid1.setPID(p_val.toFloat(), i_val.toFloat(), d_val.toFloat(), f_val.toFloat());
+  pid2.setPID(p_val.toFloat(), i_val.toFloat(), d_val.toFloat(), f_val.toFloat());
+  pid1.setOutputRampRate(ramp_val.toFloat());
+  pid2.setOutputRampRate(ramp_val.toFloat());
+  pid1.setOutputFilter(0.01);
+  pid2.setOutputFilter(0.01);
+
+  if(syn_val.equals("1"))
+  {
+    pid1.setSynchronize(true);
+    pid2.setSynchronize(true);
+  }
+  else
+  {
+    pid1.setSynchronize(false);
+    pid2.setSynchronize(false);
+  }
+}
+
+
+void sendPidToClient()
+{
+    String txtToSend = "";
+    txtToSend.concat("{");
+    txtToSend.concat("\"pid\":");
+    txtToSend.concat("\"p=");
+    txtToSend.concat(pid1.getP());
+    txtToSend.concat(" i=");
+    txtToSend.concat(pid1.getI());
+    txtToSend.concat(" d=");
+    txtToSend.concat(pid1.getD());
+    txtToSend.concat(" f=");
+    txtToSend.concat(pid1.getF());
+    txtToSend.concat(" syn=");
+    txtToSend.concat(pid1.getSynchronize() ? "1": "0");
+    txtToSend.concat(" ramp=");
+    txtToSend.concat(pid1.getRampRate());
+    txtToSend.concat("\"}");
+    ws.textAll(txtToSend.c_str());
+}

@@ -7,17 +7,23 @@
 	<meta http-equiv="expires" content="Tue, 01 Jan 1980 1:00:00 GMT">
 	<meta http-equiv="pragma" content="no-cache">
 	<script type="text/javascript" src="script.js"></script>
+	
+	<script type="text/javascript" src="https://canvasjs.com/assets/script/canvasjs.min.js"></script>
+	<script src="https://cdnjs.cloudflare.com/ajax/libs/moment.js/2.13.0/moment.min.js"></script>	
   </head>
   <body>
 
     <h1>DOUBLE Motor controller</h1>
-    <input id="gCodeCmd1" onkeypress="return searchKeyPress1(event);" value="target1=200 target2=200" size="30" type="text">
+    <input id="gCodeCmd1" onkeypress="return keyPress(event);" value="target1=1000 target2=1000" size="30" type="text">
     <input id="btn1" value="Send" onclick="doSend(document.getElementById('gCodeCmd1'));" type="button">
 	<br>
-    <input id="gCodeCmd2" onkeypress="return searchKeyPress1(event);" value="target1=0 target2=0" size="30" type="text">
+    <input id="gCodeCmd2" onkeypress="return keyPress(event);" value="target1=0 target2=0" size="30" type="text">
     <input id="btn2" value="Send" onclick="doSend(document.getElementById('gCodeCmd2'));" type="button">
 	<br>
-	
+
+    <input id="pid" onkeypress="return keyPress(event);" value="p=70.0 i=40.0 d=10.0 f=0 syn=1 ramp=5" size="30" type="text">
+    <input id="btn3" value="Send" onclick="doSend(document.getElementById('pid'));" type="button">	
+	<br>
 	<table border="1">
 	<tbody><tr><td></td><td><object id="gotop 1" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="gotop 2" data="48px-Gnome-go-top.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
 	<tr><td></td><td><object id="pwm_m1_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td><td></td><td><object id="pwm_m2_left" data="48px-Gnome-go-up.svg" type="image/svg+xml" id="roseSvg"></object></td></tr>
@@ -31,7 +37,15 @@
 	
 <p>
 Esp32 free heap: <a id="esp32_heap"></a><br>
+Encoder actual difference: <a id="actual_diff"></a>
+PID regulation data:<br>
+<table border="1">
+<tr><td><small id="PID1output"></small></td><td><small id="PID2output"></small></td></tr>
+</table>
 <input type="checkbox" checked="checked" id="enablePID" name="enablePID" onclick="handleEnablePID(this);" value="Bike">Pid enabled
+
+
+<div id="chartContainer1" style="height: 400px; width:700px;position:absolute;z-index:10;top:50px;left:320px"></div>
 
 </p>
     <p>

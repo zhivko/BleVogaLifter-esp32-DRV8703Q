@@ -6,10 +6,16 @@ var output;
 var dps1 = [];   //dataPoints. 
 var dps2 = [];   //dataPoints. 
 var dps3 = [];   //dataPoints. 
+
+var an1 = [];   //dataPoints. 
+var an2 = [];   //dataPoints. 
+
+
 var x1=0;
 var max1=-1000000;
 var min1=1000000;
 var chart1;
+var chart2;
 
 function handleEnablePID(cb)
 {
@@ -19,13 +25,29 @@ function handleEnablePID(cb)
 		doSendCommand("disablePid");
 }
 
+function handleSearchTop(cb)
+{
+	if(cb.checked)
+		doSendCommand("searchtop start");
+	else
+		doSendCommand("searchtop stop");
+}
+
+function handleSearchBottom(cb)
+{
+	if(cb.checked)
+		doSendCommand("searchbottom start");
+	else
+		doSendCommand("searchbottom stop");
+}
+
 function keyPress(e)
 {
 	// look for window.event in case event isn't passed in
 	e = e || window.event;
 	if (e.keyCode == 13)
 	{
-		doSendCommand(e.srcElement.value);
+		doSendCommand(e.srcElement.id + "#" + e.srcElement.value);
 		return false;
 	}
 	return true;
@@ -40,7 +62,7 @@ function init()
 	animationEnabled: true,
 	zoomEnabled: true,
 	title :{
-		text: "Live Data"
+		text: "Position	"
 	},
 	axisX: {
 		title: "timeline"
@@ -75,9 +97,40 @@ function init()
 		}		
 	  ]
 	});
-	
-	
     chart1.render();	
+
+	chart2 = new CanvasJS.Chart("chartContainer2",{
+	animationEnabled: true,
+	zoomEnabled: true,
+	title :{
+		text: "Current"
+	},
+	axisX: {
+		title: "timeline"
+	},
+	axisY: {						
+		title: "Units"
+	},
+	data: [ 
+		{
+		type: "line",
+		name: "current1",
+		lineThickness: 3,
+		showInLegend: true,
+		dataPoints : an1,
+		backgroundColor: "rgba(255,0,0,0.4)"
+		},
+		{
+		type: "line",
+		name: "current2",
+		lineThickness: 3,
+		showInLegend: true,
+		dataPoints : an2,
+		backgroundColor: "rgba(0,255,0,0.4)"
+		}		
+	  ]
+	});
+
 	
 }
 function testWebSocket()
@@ -166,7 +219,7 @@ function wifiConnect(i)
 function doSend(element)
 {
 	//writeToScreen("SENT: " + message); 
-	textToSend = element.value;
+	textToSend = element.id + "#" + element.value;
 	websocket.send(textToSend);
 }
 function doSendParentElementId(element)
@@ -212,9 +265,9 @@ function endsWith(str, suffix) {
 
 function drawChart(obj)
 {
+	x1 = x1+1;
 	if(obj.hasOwnProperty("encoder1_value"))
 	{
-		x1 = x1+1;
 		//config.data.labels.push(newDate(config.data.labels.length));
 		dps1.push({x: x1,y: parseFloat(obj.encoder1_value)});
 		dps2.push({x: x1,y: parseFloat(obj.encoder2_value)});
@@ -244,10 +297,33 @@ function drawChart(obj)
 		min_04 = Math.min(min_01, min_02);
 		
 		chart1.options.axisY.minimum =Math.min(min_04, min_03)-5;
-		
-		
 		chart1.render();
-		//chart2.render();				   
+	}
+
+	if(obj.hasOwnProperty("an1"))
+	{
+		//config.data.labels.push(newDate(config.data.labels.length));
+		an1.push({x: x1,y: parseFloat(obj.an1)});
+		an2.push({x: x1,y: parseFloat(obj.an2)});
+
+		if (an1.length >  100 )
+		{
+			an1.shift();					
+		}
+		if (an2.length >  100 )
+		{
+			an2.shift();					
+		}
+		
+		var max_01 = maxValue(chart2.options.data[0].dataPoints);
+		var max_02 = maxValue(chart2.options.data[1].dataPoints);
+		chart2.options.axisY.maximum = Math.max(max_01, max_02);
+		
+		var min_01 = minValue(chart2.options.data[0].dataPoints);
+		var min_02 = minValue(chart2.options.data[1].dataPoints);
+		
+		chart2.options.axisY.minimum =Math.min(min_01, min_02)-5;
+		chart2.render();
 	}
 }
 

@@ -1,20 +1,10 @@
-Guru Meditation Error: Core  1 panic'ed (Interrupt wdt timeout on CPU1)
-Core 1 register dump:
-PC      : 0x400e575d  PS      : 0x00060d34  A0      : 0x80091690  A1      : 0x3ffb57c0
-A2      : 0x3ffc3be4  A3      : 0x000000cd  A4      : 0x3ffc3ca8  A5      : 0x3ffc3bd4
-A6      : 0x0000000a  A7      : 0x3ffb58b0  A8      : 0x800e575d  A9      : 0x3ffb5770
-A10     : 0x401008b4  A11     : 0x3ffc58b8  A12     : 0x3f405a8c  A13     : 0x00000008
-A14     : 0x00000002  A15     : 0x00000001  SAR     : 0x00000004  EXCCAUSE: 0x00000006
-EXCVADDR: 0x00000000  LBEG    : 0x400014fd  LEND    : 0x4000150d  LCOUNT  : 0xfffffffc
-
-Backtrace: 0x400e575d:0x3ffb57c0 0x4009168d:0x3ffb57f0 0x40086cb2:0x3ffb5810 0x40088c95:0x3ffb5830 0x4000bec7:0x3ffb5850 0x4010e626:0x3ffb5870 0x4010e6ee:0x3ffb5890 0x4013b98d:0x3ffb58b0 0x4010a2e9:0x3ffb58d0
-
+Guru Meditation Error: Core  0 panic'ed (IllegalInstruction). Exception was unhandled.
 Core 0 register dump:
-PC      : 0x4008f24d  PS      : 0x00060e34  A0      : 0x80090fca  A1      : 0x3ffb7140
-A2      : 0x3ffae718  A3      : 0x0000cdcd  A4      : 0xb33fffff  A5      : 0x00000001
-A6      : 0x00060e20  A7      : 0x0000abab  A8      : 0x0000abab  A9      : 0x000000ff
-A10     : 0x00000056  A11     : 0x3ffb8330  A12     : 0x3ffcae60  A13     : 0x00000018
-A14     : 0x3ffc8850  A15     : 0x74400000  SAR     : 0x00000019  EXCCAUSE: 0x00000006
-EXCVADDR: 0x00000000  LBEG    : 0x4000c2e0  LEND    : 0x4000c2f6  LCOUNT  : 0xffffffff
+PC      : 0x400d24ff  PS      : 0x00060530  A0      : 0x00000000  A1      : 0x3ffd3f30
+A2      : 0x3ffc3f50  A3      : 0x00000000  A4      : 0x3ffc3f40  A5      : 0x0000103d
+A6      : 0x00000014  A7      : 0x00000000  A8      : 0x800d24ff  A9      : 0x3ffd3f10
+A10     : 0x000006c1  A11     : 0x00000000  A12     : 0x3ffc1238  A13     : 0x00000000
+A14     : 0x0000001e  A15     : 0x3ffc3d38  SAR     : 0x00000005  EXCCAUSE: 0x00000000
+EXCVADDR: 0x00000000  LBEG    : 0x400014fd  LEND    : 0x4000150d  LCOUNT  : 0xffffffff
 
-Backtrace: 0x4008f24d:0x3ffb7140 0x40090fc7:0x3ffb7170 0x4009163f:0x3ffb7190 0x40086bb8:0x3ffb71b0 0x40086c6e:0x3ffb71d0 0x4008631d:0x3ffb7220 0x4013f427:0x3ffb7240 0x40149261:0x3ffb7280 0x4008ad7d:0x3ffb7300
+Backtrace: 0x400d24ff:0x3ffd3f30 0x7ffffffd:0x3ffd3f60

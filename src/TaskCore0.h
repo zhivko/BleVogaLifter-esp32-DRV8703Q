@@ -253,7 +253,7 @@ void Task1( void * parameter )
 			ledcAnalogWrite(LEDC_CHANNEL_3, abs(pwm2), pwmValueMax);
 			ledcAnalogWrite(LEDC_CHANNEL_2, 0, pwmValueMax);
 			//Serial.printf("pwm2: %d\n", pwm2);
-		}			
+		}		
 
 		vTaskDelay(3 / portTICK_PERIOD_MS);
 	}

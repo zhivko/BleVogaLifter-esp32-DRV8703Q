@@ -11,11 +11,8 @@
 #include <ArduinoOTA.h>
 #include <stdint.h>
 
-#include <Ticker.h>
 #include "TaskCore0.h"
-
-#include "AsyncJson.h"
-#include <ArduinoJson.h>
+#include "I2CTask.h"
 
 #include <Preferences.h>
 #include "nvs_flash.h"
@@ -92,10 +89,11 @@ String gdfVds2;
 
 volatile int16_t encoder1_value;
 volatile int16_t encoder2_value;
-Ticker mover;
+//Ticker mover;
 //Ticker jsonReporter;
 TaskHandle_t TaskA;
 TaskHandle_t reportJsonTask;
+TaskHandle_t i2cTask;
 
 volatile double output1, output2;
 volatile double target1, target2;
@@ -168,7 +166,7 @@ void clearFault()
                                               // B00000100 ... IN1/PH
                                               // B00111000 ... LOCK
 
-  uint16_t reply = vspi->transfer16(data_int);  // should return 0x18 B00011000
+  vspi->transfer16(data_int);
   vspi->endTransaction();
   digitalWrite(SS1, HIGH);
 }
@@ -185,6 +183,10 @@ String getfault(uint16_t reply)
     uint8_t FAULT_VCP_UVFL = B1 << 2;  // VCP_UVFL R 0b Indicates charge-pump undervoltage fault condition
     uint8_t FAULT_OTSD = B1 << 1;      // OTSD R 0b Indicates overtemperature shutdown
     uint8_t FAULT_OTW = B1 << 0;       // OTW R 0b Indicates overtemperature warning
+    if((reply & FAULT_FAULT) > 0)
+    {
+      status1.concat("Logic OR of the FAULT status register excluding the OTW bit\n");
+    }
     if((reply & FAULT_WDFLT) > 0)
     {
       status1.concat("Watchdog time-out fault\n");
@@ -599,25 +601,25 @@ void processWsData(char *data, AsyncWebSocketClient* client)
 void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventType type, void * arg, uint8_t *data, size_t len){
   if(type == WS_EVT_CONNECT){
     //client connected
-    printf("%d ws[%s][%u] connect\n", millis(), server->url(), client->id());
+    printf("%lu ws[%s][%u] connect\n", millis(), server->url(), client->id());
     client->printf("Hello Client %u :)", client->id());
     client->ping();
     sendPidToClient();
   } else if(type == WS_EVT_DISCONNECT){
     //client disconnected
-    printf("%d ws[%s][%u] disconnect\n", millis(), server->url(), client->id());
+    printf("%lu ws[%s][%u] disconnect\n", millis(), server->url(), client->id());
   } else if(type == WS_EVT_ERROR){
     //error was received from the other end
-    printf("%d ws[%s][%u] error(%u): %s\n", millis(), server->url(), client->id(), *((uint16_t*)arg), (char*)data);
+    printf("%lu ws[%s][%u] error(%u): %s\n", millis(), server->url(), client->id(), *((uint16_t*)arg), (char*)data);
   } else if(type == WS_EVT_PONG){
     //pong message was received (in response to a ping request maybe)
-    printf("%d ws[%s][%u] pong[%u]: %s\n", millis(), server->url(), client->id(), len, (len)?(char*)data:"");
+    printf("%lu ws[%s][%u] pong[%u]: %s\n", millis(), server->url(), client->id(), len, (len)?(char*)data:"");
   } else if(type == WS_EVT_DATA){
     //data packet
     AwsFrameInfo * info = (AwsFrameInfo*)arg;
     if(info->final && info->index == 0 && info->len == len){
       //the whole message is in a single frame and we got all of it's data
-      printf("%d ws[%s][%u] %s-message[%llu]: ", millis(), server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
+      printf("%lu ws[%s][%u] %s-message[%llu]: ", millis(), server->url(), client->id(), (info->opcode == WS_TEXT)?"text":"binary", info->len);
       if(info->opcode == WS_TEXT){
         data[len] = 0;
         printf("%s\n", (char*)data);
@@ -641,10 +643,10 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
       if(info->index == 0){
         if(info->num == 0)
           printf("%d ws[%s][%u] %s-message start\n", millis(), server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
-        printf("%d ws[%s][%u] frame[%u] start[%llu]\n", millis(), server->url(), client->id(), info->num, info->len);
+        printf("%lu ws[%s][%u] frame[%u] start[%llu]\n", millis(), server->url(), client->id(), info->num, info->len);
       }
 
-      printf("%d ws[%s][%u] frame[%u] %s[%llu - %llu]: ", millis(), server->url(), client->id(), info->num, (info->message_opcode == WS_TEXT)?"text":"binary", info->index, info->index + len);
+      printf("%lu ws[%s][%u] frame[%u] %s[%llu - %llu]: ", millis(), server->url(), client->id(), info->num, (info->message_opcode == WS_TEXT)?"text":"binary", info->index, info->index + len);
       if(info->message_opcode == WS_TEXT){
         printf("%s\n", (char*)data);
       } else {
@@ -655,9 +657,9 @@ void onEvent(AsyncWebSocket * server, AsyncWebSocketClient * client, AwsEventTyp
       }
 
       if((info->index + len) == info->len){
-        printf("%d ws[%s][%u] frame[%u] end[%llu]\n", millis(), server->url(), client->id(), info->num, info->len);
+        printf("%lu ws[%s][%u] frame[%u] end[%llu]\n", millis(), server->url(), client->id(), info->num, info->len);
         if(info->final){
-          printf("%d ws[%s][%u] %s-message end\n", millis(), server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
+          printf("%lu ws[%s][%u] %s-message end\n", millis(), server->url(), client->id(), (info->message_opcode == WS_TEXT)?"text":"binary");
 /*
           if(info->message_opcode == WS_TEXT)
             client->text("I got your text message");
@@ -697,8 +699,7 @@ bool checkNoApFoundCritical()
     }
     return true;
   }
-  else
-    return false;
+  return false;
 }
 
 
@@ -730,8 +731,7 @@ void waitForIp()
   Serial.println(WiFi.localIP());
 }
 
-void blink(int i)
-{
+void blink(int i){
   for(int j=0; j<i; j++)
   {
     digitalWrite(LED_PIN, HIGH);
@@ -876,11 +876,11 @@ void setup()
     Serial.print("WiFi lost connection. Reason: ");
     Serial.println(info.disconnected.reason);
 
-    String msg;
+    String msg="";
     msg.concat(info.disconnected.reason);
-
+    Serial.printf("Reason: %s",msg.c_str());
     if(msg.indexOf("201")>=0){
-      NO_AP_FOUND_count++;
+      NO_AP_FOUND_count=NO_AP_FOUND_count+1;
       checkNoApFoundCritical();
     }    
   }, WiFiEvent_t::SYSTEM_EVENT_STA_DISCONNECTED);
@@ -935,7 +935,8 @@ void setup()
 
     //jsonReporter.detach();
     vTaskSuspend(reportJsonTask);
-    mover.detach();
+    vTaskSuspend(i2cTask);
+    //mover.detach();
 
     // Disable client connections    
     ws.enable(false);
@@ -947,13 +948,24 @@ void setup()
     ws.closeAll();
   });
 
-  xTaskCreate(
+  
+  xTaskCreatePinnedToCore(
                     reportJson,                  // Task function. 
                     "reportJsonTask",            // String with name of task. 
+                    30000,                       // Stack size in words. 
+                    NULL,                        // Parameter passed as input of the task 
+                    tskIDLE_PRIORITY,            // Priority of the task.
+                    &reportJsonTask,             // Task handle.
+                    1);                          // core number  
+  
+  xTaskCreatePinnedToCore(
+                    i2cTask_func,                // Task function. 
+                    "i2cTask",                   // String with name of task. 
                     10000,                       // Stack size in words. 
                     NULL,                        // Parameter passed as input of the task 
                     tskIDLE_PRIORITY,            // Priority of the task.
-                    &reportJsonTask);            // Task handle. 
+                    &i2cTask,                    // Task handle.
+                    1);                          // core number 
 
   rotaryEncoder1.setBoundaries(-10000, 10000, false);
   rotaryEncoder2.setBoundaries(-10000, 10000, false);
@@ -1011,8 +1023,7 @@ void setup()
   digitalWrite(GATEDRIVER_PIN, HIGH);  //enable gate drivers
   Serial.println("Gate driver ON...Done.");
 
-  mover.attach_ms(10, move);
-  //jsonReporter.attach_ms(250, reportJson);
+  //mover.attach_ms(10, move);
     
   blink(5);
 
@@ -1075,163 +1086,172 @@ void move(){
 }
 
 //void reportJson()
-void reportJson(void *pvParameters)
+IRAM_ATTR void reportJson(void *pvParameters)
 {
-    Serial.println("reportjson1");
-  if(ws.count()>0 && !reportingJson)
+  for (;;)
   {
-    reportingJson = true;
-    txtToSend = "";
-    txtToSend.concat("{");
+    //Serial.println("reportjson1");
+    if(ws.count()>0)
+    {
+      //reportingJson = true;
+      txtToSend = "";
+      txtToSend.concat("{");
 
-    txtToSend.concat("\"encoder1_value\":");
-    txtToSend.concat(encoder1_value);
-    txtToSend.concat(",");
+      txtToSend.concat("\"encoder1_value\":");
+      txtToSend.concat(encoder1_value);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"encoder2_value\":");
-    txtToSend.concat(encoder2_value);
-    txtToSend.concat(",");
+      txtToSend.concat("\"encoder2_value\":");
+      txtToSend.concat(encoder2_value);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"pwm1\":");
-    txtToSend.concat(pwm1);
-    txtToSend.concat(",");
+      txtToSend.concat("\"pwm1\":");
+      txtToSend.concat(pwm1);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"pwm2\":");
-    txtToSend.concat(pwm2);
-    txtToSend.concat(",");
+      txtToSend.concat("\"pwm2\":");
+      txtToSend.concat(pwm2);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"target1\":");
-    txtToSend.concat(target1);
-    txtToSend.concat(",");
+      txtToSend.concat("\"target1\":");
+      txtToSend.concat(target1);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"target2\":");
-    txtToSend.concat(target2);
-    txtToSend.concat(",");
+      txtToSend.concat("\"target2\":");
+      txtToSend.concat(target2);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"output1\":");
-    txtToSend.concat(output1);
-    txtToSend.concat(",");
+      txtToSend.concat("\"output1\":");
+      txtToSend.concat(output1);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"output2\":");
-    txtToSend.concat(output2);
-    txtToSend.concat(",");
+      txtToSend.concat("\"output2\":");
+      txtToSend.concat(output2);
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"an1\":");
-    txtToSend.concat(an1_slow);
-    txtToSend.concat(",");
-    txtToSend.concat("\"an2\":");
-    txtToSend.concat(an2_slow);
-    txtToSend.concat(",");    
+      txtToSend.concat("\"an1\":");
+      txtToSend.concat(an1_slow);
+      txtToSend.concat(",");
+      txtToSend.concat("\"an2\":");
+      txtToSend.concat(an2_slow);
+      txtToSend.concat(",");    
 
-    txtToSend.concat("\"actual_diff\":");
-    txtToSend.concat(pid1.getActual() - pid2.getActual());
-    txtToSend.concat(",");
+      txtToSend.concat("\"actual_diff\":");
+      txtToSend.concat(pid1.getActual() - pid2.getActual());
+      txtToSend.concat(",");
 
-    txtToSend.concat("\"PID1output\":");
-    txtToSend.concat("\"Pout=");
-    txtToSend.concat(pid1.getPoutput());
-    txtToSend.concat("<br>Iout=");
-    txtToSend.concat(pid1.getIoutput());
-    txtToSend.concat("<br>Dout=");
-    txtToSend.concat(pid1.getDoutput());
-    txtToSend.concat("<br>Fout=");
-    txtToSend.concat(pid1.getFoutput());
-    txtToSend.concat("<br>POSout=");
-    txtToSend.concat(pid1.getPOSoutput());
-    txtToSend.concat("<br>POSoutF=");
-    txtToSend.concat(pid1.getPOSoutputFiltered());        
-    txtToSend.concat("<br>setpoint=");
-    txtToSend.concat(pid1.getSetpoint());
-    txtToSend.concat("<br>actual=");
-    txtToSend.concat(pid1.getActual());
-    txtToSend.concat("<br>error=");
-    txtToSend.concat(pid1.getError());    
-    txtToSend.concat("<br>errorSum=");
-    txtToSend.concat(pid1.getErrorSum());    
-    txtToSend.concat("<br>maxIOutput=");
-    txtToSend.concat(pid1.getMaxIOutput());    
-    txtToSend.concat("\",");
+      txtToSend.concat("\"PID1output\":");
+      txtToSend.concat("\"Pout=");
+      txtToSend.concat(pid1.getPoutput());
+      txtToSend.concat("<br>Iout=");
+      txtToSend.concat(pid1.getIoutput());
+      txtToSend.concat("<br>Dout=");
+      txtToSend.concat(pid1.getDoutput());
+      txtToSend.concat("<br>Fout=");
+      txtToSend.concat(pid1.getFoutput());
+      txtToSend.concat("<br>POSout=");
+      txtToSend.concat(pid1.getPOSoutput());
+      txtToSend.concat("<br>POSoutF=");
+      txtToSend.concat(pid1.getPOSoutputFiltered());        
+      txtToSend.concat("<br>setpoint=");
+      txtToSend.concat(pid1.getSetpoint());
+      txtToSend.concat("<br>actual=");
+      txtToSend.concat(pid1.getActual());
+      txtToSend.concat("<br>error=");
+      txtToSend.concat(pid1.getError());    
+      txtToSend.concat("<br>errorSum=");
+      txtToSend.concat(pid1.getErrorSum());    
+      txtToSend.concat("<br>maxIOutput=");
+      txtToSend.concat(pid1.getMaxIOutput());    
+      txtToSend.concat("\",");
 
-    txtToSend.concat("\"PID2output\":");
-    txtToSend.concat("\"Pout=");
-    txtToSend.concat(pid2.getPoutput());
-    txtToSend.concat("<br>Iout=");
-    txtToSend.concat(pid2.getIoutput());
-    txtToSend.concat("<br>Dout=");
-    txtToSend.concat(pid2.getDoutput());
-    txtToSend.concat("<br>Fout=");
-    txtToSend.concat(pid2.getFoutput());
-    txtToSend.concat("<br>POSout=");
-    txtToSend.concat(pid2.getPOSoutput());
-    txtToSend.concat("<br>POSoutF=");
-    txtToSend.concat(pid2.getPOSoutputFiltered());
-    txtToSend.concat("<br>setpoint=");
-    txtToSend.concat(pid2.getSetpoint());
-    txtToSend.concat("<br>actual=");
-    txtToSend.concat(pid2.getActual());
-    txtToSend.concat("<br>error=");
-    txtToSend.concat(pid2.getError());
-    txtToSend.concat("<br>errorSum=");
-    txtToSend.concat(pid2.getErrorSum());    
-    txtToSend.concat("<br>maxIOutput=");
-    txtToSend.concat(pid2.getMaxIOutput());    
-    txtToSend.concat("\",");
+      txtToSend.concat("\"PID2output\":");
+      txtToSend.concat("\"Pout=");
+      txtToSend.concat(pid2.getPoutput());
+      txtToSend.concat("<br>Iout=");
+      txtToSend.concat(pid2.getIoutput());
+      txtToSend.concat("<br>Dout=");
+      txtToSend.concat(pid2.getDoutput());
+      txtToSend.concat("<br>Fout=");
+      txtToSend.concat(pid2.getFoutput());
+      txtToSend.concat("<br>POSout=");
+      txtToSend.concat(pid2.getPOSoutput());
+      txtToSend.concat("<br>POSoutF=");
+      txtToSend.concat(pid2.getPOSoutputFiltered());
+      txtToSend.concat("<br>setpoint=");
+      txtToSend.concat(pid2.getSetpoint());
+      txtToSend.concat("<br>actual=");
+      txtToSend.concat(pid2.getActual());
+      txtToSend.concat("<br>error=");
+      txtToSend.concat(pid2.getError());
+      txtToSend.concat("<br>errorSum=");
+      txtToSend.concat(pid2.getErrorSum());    
+      txtToSend.concat("<br>maxIOutput=");
+      txtToSend.concat(pid2.getMaxIOutput());    
+      txtToSend.concat("\",");
 
-    txtToSend.concat("\"stop1_top\":");
-    txtToSend.concat(stop1_top);
-    txtToSend.concat(",");    
-    txtToSend.concat("\"stop1_bottom\":");
-    txtToSend.concat(stop1_bottom);
-    txtToSend.concat(",");    
-    txtToSend.concat("\"stop2_top\":");
-    txtToSend.concat(stop2_top);
-    txtToSend.concat(",");    
-    txtToSend.concat("\"stop2_bottom\":");
-    txtToSend.concat(stop2_bottom);
-    txtToSend.concat(",");    
+      txtToSend.concat("\"stop1_top\":");
+      txtToSend.concat(stop1_top);
+      txtToSend.concat(",");    
+      txtToSend.concat("\"stop1_bottom\":");
+      txtToSend.concat(stop1_bottom);
+      txtToSend.concat(",");    
+      txtToSend.concat("\"stop2_top\":");
+      txtToSend.concat(stop2_top);
+      txtToSend.concat(",");    
+      txtToSend.concat("\"stop2_bottom\":");
+      txtToSend.concat(stop2_bottom);
+      txtToSend.concat(",");    
 
-    txtToSend.concat("\"esp32_heap\":");
-    txtToSend.concat(ESP.getFreeHeap());
-    txtToSend.concat("}");
+      txtToSend.concat("\"esp32_heap\":");
+      txtToSend.concat(ESP.getFreeHeap());
+      txtToSend.concat("}");
 
-    ws.textAll(txtToSend.c_str());
-    reportingJson = false;
+      ws.textAll(txtToSend.c_str());
+      //reportingJson = false;
+    }
+    //Serial.println("reportjson2");
+    unsigned long start;
+    long delta;
+
+    long randNumber = random(0, 10);
+    //Serial.println("reportjson3");
+    if(rotaryEncoder1.encoderChanged()!=0 && ((int)target1) == encoder1_value)
+    {
+      //Serial.println("Saving to flash enc1.");
+      encoder1_value = rotaryEncoder1.readEncoder();
+      start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
+      preferences.begin("settings", false);
+      preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
+      preferences.putInt("target1", (int)target1);
+      preferences.end();
+      delta = micros() - start;
+      
+      
+      if(delta>1000)
+        Serial.printf("%d Preferences save completed in %lu us.\n", micros(), delta);
+      
+      
+    }
+    if(rotaryEncoder2.encoderChanged()!=0 && ((int)target2) == encoder2_value)
+    {
+      //Serial.println("Saving to flash enc2.");
+      encoder2_value = rotaryEncoder2.readEncoder();
+      start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
+      preferences.begin("settings", false);
+      preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
+      preferences.putInt("target2", (int)target2);
+      preferences.end();
+      delta = micros() - start;
+      
+      if(delta>1000)
+        Serial.printf("%d Preferences save completed in %lu us.\n", micros(), delta);
+      
+    }
+    //Serial.println("reportjson4");
+    vTaskDelay(250 / portTICK_PERIOD_MS);
+    //Serial.println("reportjson5");
   }
-  Serial.println("reportjson2");
-  unsigned long start;
-  long delta;
-
-  long randNumber = random(0, 10);
-  Serial.println("reportjson3");
-  if(rotaryEncoder1.encoderChanged()!=0)
-  {
-    Serial.println("Saving to flash enc1.");
-    encoder1_value = rotaryEncoder1.readEncoder();
-    start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-    preferences.begin("settings", false);
-    preferences.putInt("encoder1_value", rotaryEncoder1.readEncoder());
-    preferences.putInt("target1", (int)target1);
-    preferences.end();
-    delta = micros() - start;
-    if(delta>20)
-      Serial.printf("%d Preferences save completed in %lu us.\n", micros(), delta);
-  }
-  if(rotaryEncoder2.encoderChanged()!=0)
-  {
-    Serial.println("Saving to flash enc2.");
-    encoder2_value = rotaryEncoder2.readEncoder();
-    start = micros();   // ref: https://github.com/espressif/arduino-esp32/issues/384
-    preferences.begin("settings", false);
-    preferences.putInt("encoder2_value", rotaryEncoder2.readEncoder());
-    preferences.putInt("target2", (int)target2);
-    preferences.end();
-    delta = micros() - start;
-    if(delta>20)
-      Serial.printf("%d Preferences save completed in %lu us.\n", micros(), delta);
-
-    output2=pid2.getOutput((float)rotaryEncoder2.readEncoder(), target2);
-  }
-  vTaskDelay(250 / portTICK_PERIOD_MS);
 }
 
 void setPidsFromString(String input)

@@ -265,65 +265,68 @@ function endsWith(str, suffix) {
 
 function drawChart(obj)
 {
-	x1 = x1+1;
-	if(obj.hasOwnProperty("encoder1_value"))
+	if(chart1 != null && chart2 != null)
 	{
-		//config.data.labels.push(newDate(config.data.labels.length));
-		dps1.push({x: x1,y: parseFloat(obj.encoder1_value)});
-		dps2.push({x: x1,y: parseFloat(obj.encoder2_value)});
-		dps3.push({x: x1,y: parseFloat(obj.actual_diff)});
+		x1 = x1+1;
+		if(obj.hasOwnProperty("encoder1_value"))
+		{
+			//config.data.labels.push(newDate(config.data.labels.length));
+			dps1.push({x: x1,y: parseFloat(obj.encoder1_value)});
+			dps2.push({x: x1,y: parseFloat(obj.encoder2_value)});
+			dps3.push({x: x1,y: parseFloat(obj.actual_diff)});
 
-		if (dps1.length >  100 )
-		{
-			dps1.shift();					
+			if (dps1.length >  100 )
+			{
+				dps1.shift();					
+			}
+			if (dps2.length >  100 )
+			{
+				dps2.shift();					
+			}
+			
+			if (dps3.length >  100 )
+			{
+				dps3.shift();					
+			}
+			
+			var max_01 = maxValue(chart1.options.data[0].dataPoints);
+			var max_02 = maxValue(chart1.options.data[1].dataPoints);
+			chart1.options.axisY.maximum = Math.max(max_01, max_02);
+			
+			var min_01 = minValue(chart1.options.data[0].dataPoints);
+			var min_02 = minValue(chart1.options.data[1].dataPoints);
+			var min_03 = minValue(chart1.options.data[2].dataPoints);
+			min_04 = Math.min(min_01, min_02);
+			
+			chart1.options.axisY.minimum =Math.min(min_04, min_03)-5;
+			chart1.render();
 		}
-		if (dps2.length >  100 )
-		{
-			dps2.shift();					
-		}
-		
-		if (dps3.length >  100 )
-		{
-			dps3.shift();					
-		}
-		
-		var max_01 = maxValue(chart1.options.data[0].dataPoints);
-		var max_02 = maxValue(chart1.options.data[1].dataPoints);
-		chart1.options.axisY.maximum = Math.max(max_01, max_02);
-		
-		var min_01 = minValue(chart1.options.data[0].dataPoints);
-		var min_02 = minValue(chart1.options.data[1].dataPoints);
-		var min_03 = minValue(chart1.options.data[2].dataPoints);
-		min_04 = Math.min(min_01, min_02);
-		
-		chart1.options.axisY.minimum =Math.min(min_04, min_03)-5;
-		chart1.render();
-	}
 
-	if(obj.hasOwnProperty("an1"))
-	{
-		//config.data.labels.push(newDate(config.data.labels.length));
-		an1.push({x: x1,y: parseFloat(obj.an1)});
-		an2.push({x: x1,y: parseFloat(obj.an2)});
+		if(obj.hasOwnProperty("an1"))
+		{
+			//config.data.labels.push(newDate(config.data.labels.length));
+			an1.push({x: x1,y: parseFloat(obj.an1)});
+			an2.push({x: x1,y: parseFloat(obj.an2)});
 
-		if (an1.length >  100 )
-		{
-			an1.shift();					
+			if (an1.length >  100 )
+			{
+				an1.shift();					
+			}
+			if (an2.length >  100 )
+			{
+				an2.shift();					
+			}
+			
+			var max_01 = maxValue(chart2.options.data[0].dataPoints);
+			var max_02 = maxValue(chart2.options.data[1].dataPoints);
+			chart2.options.axisY.maximum = Math.max(max_01, max_02);
+			
+			var min_01 = minValue(chart2.options.data[0].dataPoints);
+			var min_02 = minValue(chart2.options.data[1].dataPoints);
+			
+			chart2.options.axisY.minimum =Math.min(min_01, min_02)-5;
+			chart2.render();
 		}
-		if (an2.length >  100 )
-		{
-			an2.shift();					
-		}
-		
-		var max_01 = maxValue(chart2.options.data[0].dataPoints);
-		var max_02 = maxValue(chart2.options.data[1].dataPoints);
-		chart2.options.axisY.maximum = Math.max(max_01, max_02);
-		
-		var min_01 = minValue(chart2.options.data[0].dataPoints);
-		var min_02 = minValue(chart2.options.data[1].dataPoints);
-		
-		chart2.options.axisY.minimum =Math.min(min_01, min_02)-5;
-		chart2.render();
 	}
 }
 

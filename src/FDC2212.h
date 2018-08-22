@@ -4,6 +4,7 @@
  *  Created on: 26 Nov 2017
  *      Author: klemen
  */
+// https://www.esp32.com/viewtopic.php?t=1290
 
 #ifndef FDC2212_H_
 #define FDC2212_H_
@@ -12,7 +13,6 @@
 #include "limits.h"
 #include "HardwareSerial.h"
 #include "Wire.h"
-#include "esp32-hal-i2c.h"
 #include "driver/i2c.h"
 
 
@@ -29,6 +29,7 @@
 
 
 //registers
+#define FDC2212_MANUFACT_REGADDR            0x7E
 #define FDC2212_DEVICE_ID_REGADDR           0x7F
 #define FDC2212_MUX_CONFIG_REGADDR          0x1B
 #define FDC2212_CONFIG_REGADDR              0x1A
@@ -67,18 +68,17 @@
 #define READ_BIT                           I2C_MASTER_READ  /*!< I2C master read */
 #define ACK_CHECK_EN                       0x1              /*!< I2C master will check ack from slave*/
 #define ACK_CHECK_DIS                      0x0              /*!< I2C master will not check ack from slave */
-#define ACK_VAL                            0x0              /*!< I2C ack value */
-#define NACK_VAL                           0x1              /*!< I2C nack value */
 
 //SemaphoreHandle_t print_mux = NULL;
+
+extern void blink(int i);
 
 class FDC2212 {
 public:
     FDC2212();
-    FDC2212(i2c_cmd_handle_t handle);
     bool begin(void);
     void shouldRead();
-    uint32_t getReading();
+    IRAM_ATTR uint32_t getReading();
     static FDC2212 *getInstance();
 
     bool initialized;
@@ -92,21 +92,17 @@ private:
     void setGain(void);
     double calculateCapacitance(long long fsensor);
     long long calculateFsensor(unsigned long reading);
-    void write8FDC(uint8_t data);
+    //void write8FDC(uint16_t address, uint8_t data);
     void write16FDC(uint16_t address, uint16_t data);
     uint16_t read16FDC(uint16_t address);
     uint8_t read8FDC(uint16_t address);
-    uint8_t _i2caddr;
     unsigned long lastReading;
     double angle;
-
-    esp_err_t i2c_example_master_read_slave(i2c_port_t i2c_num, uint16_t address, uint8_t* data_rd, size_t size);
-    esp_err_t i2c_example_master_write_slave(i2c_port_t i2c_num, uint8_t* data_wr, size_t size);
 
     bool isReading;
 
     static FDC2212* instance;
-    i2c_cmd_handle_t _i2cHandle;
+    i2c_t* _i2c;
 };
 
 #endif /* FDC2212_H_ */

@@ -9,6 +9,7 @@
 
 FDC2212* FDC2212::instance = 0;
 
+
 FDC2212* FDC2212::getInstance() {
 	if (!instance) {
 		instance = new FDC2212();
@@ -16,8 +17,65 @@ FDC2212* FDC2212::getInstance() {
 	return instance;
 }
 
+esp_err_t ma_read_uint16t(uint8_t address, uint8_t *rbuf)
+{ esp_err_t ret;
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, (FDC2214_I2C_ADDRESS<<1) | WRITE_BIT, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, address, ACK_CHECK_EN);
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, (FDC2214_I2C_ADDRESS<<1) | READ_BIT, ACK_CHECK_EN);
+  i2c_master_read_byte(cmd, rbuf++, I2C_MASTER_ACK);
+  i2c_master_read_byte(cmd, rbuf++, I2C_MASTER_NACK);
+  i2c_master_stop(cmd);
+  ret = i2c_master_cmd_begin(I2C_NUM_1, cmd, 1 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  if (ret == ESP_FAIL) {
+      printf("i2c Error read - readback\n");
+     return ESP_FAIL;
+  }
+  return ret; 
+}
+
+/*
+esp_err_t ma_write_uint8t(uint8_t address, uint8_t value)
+{
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, (FDC2214_I2C_ADDRESS<<1) | WRITE_BIT , ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, address, I2C_MASTER_NACK);
+  i2c_master_write_byte(cmd, value, I2C_MASTER_ACK);
+  i2c_master_stop(cmd); 
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_1, cmd, 20 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  if (ret == ESP_FAIL) {
+     printf("ESP_I2C_WRITE ERROR : %d\n",ret);
+    return ret;
+  }
+  return ESP_OK;
+}
+*/
+
+esp_err_t ma_write_uint16t(uint8_t address, uint16_t value)
+{
+  i2c_cmd_handle_t cmd = i2c_cmd_link_create();
+  i2c_master_start(cmd);
+  i2c_master_write_byte(cmd, (FDC2214_I2C_ADDRESS<<1) | WRITE_BIT , ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, address, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, value >> 8, ACK_CHECK_EN);
+  i2c_master_write_byte(cmd, value << 8, ACK_CHECK_EN);
+  i2c_master_stop(cmd); 
+  esp_err_t ret = i2c_master_cmd_begin(I2C_NUM_1, cmd, 1 / portTICK_RATE_MS);
+  i2c_cmd_link_delete(cmd);
+  if (ret == ESP_FAIL) {
+     printf("ESP_I2C_WRITE ERROR : %d\n",ret);
+    return ret;
+  }
+  return ESP_OK;
+}
+
 FDC2212::FDC2212() {
-	_i2caddr = (FDC2214_I2C_ADDRESS << 1);
 	initialized = false;
 	capMin = ULONG_MAX;
 	capMax = 0;
@@ -29,68 +87,48 @@ FDC2212::FDC2212() {
 	angle = 0;
 }
 
-FDC2212::FDC2212(i2c_cmd_handle_t i2cHandle) {
-	instance = FDC2212::getInstance();
-	instance->_i2cHandle = i2cHandle;
-}
-
 /**************************************************************************/
 /*!
  @brief  Setups the HW
  */
 /**************************************************************************/
 bool FDC2212::begin(void) {
-	//Wire.begin();
-
-    i2c_port_t i2c_master_port = I2C_NUM_1;
-    i2c_config_t conf;
-    conf.mode = I2C_MODE_MASTER;
-    conf.sda_io_num = GPIO_NUM_21;
-    conf.sda_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.scl_io_num = GPIO_NUM_22;
-    conf.scl_pullup_en = GPIO_PULLUP_ENABLE;
-    conf.master.clk_speed = I2C_EXAMPLE_MASTER_FREQ_HZ;
-    i2c_param_config(i2c_master_port, &conf);
-    i2c_driver_install(i2c_master_port, conf.mode,
-                       I2C_EXAMPLE_MASTER_RX_BUF_DISABLE,
-                       I2C_EXAMPLE_MASTER_TX_BUF_DISABLE, 0);
-
-	uint8_t aRxBuffer[2];
-	uint16_t REG_CHIP_MEM_ADDR = 0x7e;
-
-    /*
-	if (HAL_I2C_Mem_Read(&this->instance->_i2cHandle, this->instance->_i2caddr, REG_CHIP_MEM_ADDR, I2C_MEMADD_SIZE_8BIT, aRxBuffer, 2, 10000) != HAL_OK) {
-		if (HAL_I2C_GetError(&this->instance->_i2cHandle) != HAL_I2C_ERROR_AF) {
-			_Error_Handler(__FILE__, __LINE__);
+	esp_err_t ret = i2c_driver_install(I2C_NUM_1, I2C_MODE_MASTER, 0, 0, 0);
+	if(ret == ESP_OK)
+	{
+	_i2c = i2cInit(1,21,22,100000);
+	vTaskDelay(20 / portTICK_PERIOD_MS);
+	if(_i2c)
+	{
+		/*
+		uint16_t manufacturer = read16FDC(FDC2212_MANUFACT_REGADDR);
+		Serial.printf("i2c manufacturer %x\n", manufacturer);
+		if (manufacturer != 0x5449) {
+			Serial.printf("Wrong i2c device manufacturer %x\n", manufacturer);
+			//two valid device ids for FDC2214 0x3054 and 0x3055
+			return false;
 		}
+		*/
+
+		uint16_t deviceId = read16FDC(FDC2212_DEVICE_ID_REGADDR);
+		Serial.printf("i2c device %x\n", deviceId);
+		if (!(deviceId == 0x3054 || deviceId == 0x3055)) {
+			Serial.printf("Wrong i2c device %x\n", deviceId);
+			//two valid device ids for FDC2214 0x3054 and 0x3055
+			return false;
+		}
+		Serial.println("i2c device FDC2212 present.");
+
+		Serial.println("FDC2212 loadsettings.");
+		loadSettings();
+		Serial.println("FDC2212 setgain.");
+		setGain();
+		Serial.println("Initialized.");
+		initialized = true;
+		return true;
 	}
-    */
-    esp_err_t err = this->i2c_example_master_read_slave(I2C_EXAMPLE_MASTER_NUM, REG_CHIP_MEM_ADDR, aRxBuffer, 2);
-    if(err != ESP_OK)
-    {
-        Serial.println("Error in i2c read slave.");
-    }
-
-
-	uint16_t manufacturer = aRxBuffer[0] << 8;
-	manufacturer |= aRxBuffer[1];   // returns: manufacturer = 0x5449;
-
-	int devId = read16FDC(FDC2212_DEVICE_ID_REGADDR);
-	if (devId != 0x3055) {
-        Serial.println("Wrong i2c device.");
-		//two valid device ids for FDC2214 0x3054 and 0x3055
-		return false;
 	}
-    Serial.println("i2c device FDC2212 present.");
-
-    Serial.println("FDC2212 loadsettings.");
-	loadSettings();
-    Serial.println("FDC2212 setgain.");
-	setGain();
-    Serial.println("Initialized.");
-	initialized = true;
-
-	return true;
+	return false;
 }
 
 /**************************************************************************/
@@ -211,22 +249,23 @@ void FDC2212::loadSettings(void) {
  @brief  Takes a reading and calculates capacitance from i
  */
 /**************************************************************************/
-uint32_t FDC2212::getReading() {
+IRAM_ATTR uint32_t FDC2212::getReading() {
 	uint32_t reading = 0;
 	if (!this->isReading) {
 		this->isReading = true;
 		int timeout = 100;
 
+	    //blink(1);
 		int status = read16FDC(FDC2212_STATUS_REGADDR);
 
 		if (status & FDC2212_CH0_DRDY)
-			asm("nop");
+			Serial.println("FDC2212_CH0_DRDY");
 		if (status & FDC2212_CH0_AMPL_LOW)
-			asm("nop");
+			Serial.println("FDC2212_CH0_AMPL_LOW");
 		if (status & FDC2212_CH0_AMPL_HIGH)
-			asm("nop");
+			Serial.println("FDC2212_CH0_AMPL_HIGH");
 		if (status & FDC2212_CH0_WCHD_TO)
-			asm("nop");
+			Serial.println("FDC2212_CH0_WCHD_TO");
 
 		while (timeout && !(status & FDC2212_CH0_UNREADCONV)) {
 			status = read16FDC(FDC2212_STATUS_REGADDR);
@@ -258,7 +297,7 @@ uint32_t FDC2212::getReading() {
 			this->lastReadingTick = millis();
 		} else {
 			//error not reading
-			//printUsb("error reading fdc");
+			Serial.println("error reading fdc");
 			reading = 0;
 		}
 
@@ -316,155 +355,51 @@ void FDC2212::setGain(void) {
  */
 /**************************************************************************/
 
-// Read 1 byte from the VL6180X at 'address'
-uint8_t FDC2212::read8FDC(uint16_t address) {
-	uint8_t data;
-	uint8_t aRxBuffer[2];
-    esp_err_t err = this->i2c_example_master_read_slave(I2C_EXAMPLE_MASTER_NUM, address, aRxBuffer, 2);
-    if(err != ESP_OK)
-    {
-        Serial.println("Error in i2c read slave.");
-    }
-
-	data = aRxBuffer[0];
-
-#if defined(I2C_DEBUG)
-	Serial.print("\t$"); Serial.print(address, HEX); Serial.print(": 0x"); Serial.println(r, HEX);
-#endif
-
-	return data;
-}
-
 // Read 2 byte from the VL6180X at 'address'
 uint16_t FDC2212::read16FDC(uint16_t address) {
-	uint16_t data;
 	/*
-	 Wire.beginTransmission(_i2caddr);
-	 //    Wire.write(address >> 8);
-	 Wire.write(address);
-	 Wire.endTransmission();
+	uint16_t Address;
+	Address = FDC2214_I2C_ADDRESS << 1;
+	Address |= OAR1_ADD0_Set;
+    uint16_t data;
+    Wire.beginTransmission(Address);
+    Wire.write(address);
+    Wire.endTransmission();
 
-	 Wire.requestFrom(_i2caddr, (uint8_t) 2);
-	 while (!Wire.available());
-	 data = Wire.read();
-	 data <<= 8;
-	 while (!Wire.available());
-	 data |= Wire.read();
-	 return data;
-	 */
-	uint8_t aRxBuffer[2];
-    esp_err_t err = this->i2c_example_master_read_slave(I2C_EXAMPLE_MASTER_NUM, address, aRxBuffer, 2);
-    if(err != ESP_OK)
-    {
-        Serial.println("Error in i2c read slave.");
-    }
-	data = aRxBuffer[0] << 8;
-	data |= aRxBuffer[1];
+    Wire.requestFrom(Address, (uint8_t) 2);
+    while (!Wire.available());
+    data = Wire.read();
+    data <<= 8;
+    while (!Wire.available());
+    data |= Wire.read();
+    return data;
+	*/
 
-	return data;
+	uint8_t r[2];
+	esp_err_t res = ma_read_uint16t(address, r);
+	uint16_t result = (r[0]<<8 | r[1]);
+	return result;
 }
 
-// write 1 byte
-void FDC2212::write8FDC(uint8_t data) {
-	/*
-	 Wire.beginTransmission(_i2caddr);
-	 Wire.write(address >> 8);
-	 Wire.write(address);
-	 Wire.write(data);
-	 Wire.endTransmission();
-	 */
+// write 2 bytes
+void FDC2212::write16FDC(uint16_t address, uint16_t data) {
+/*
+	uint16_t Address = FDC2214_I2C_ADDRESS << 1;
+	Address &= OAR1_ADD0_Reset;
 
-    esp_err_t err = this->i2c_example_master_write_slave(I2C_EXAMPLE_MASTER_NUM, &data, 2);
-    if(err != ESP_OK)
-    {
-        Serial.println("Error in i2c read slave.");
-    }
+    Wire.beginTransmission(Address);
+    Wire.write(address >> 8);
+    Wire.write(address & 0xFF);
+    Wire.write(data >> 8);
+    Wire.write(data);
+    Wire.endTransmission();
+*/
+    ma_write_uint16t(address, data);
 
-#if defined(I2C_DEBUG)
-	Serial.print("\t$"); Serial.print(address, HEX); Serial.print(" = 0x"); Serial.println(data, HEX);
-#endif
+
 }
 
-//// write 2 bytes
-//void FDC2212::write16FDC(uint16_t address, uint16_t data) {
-//    Wire.beginTransmission(_i2caddr);
-////    Wire.write(address >> 8);
-//    Wire.write(address & 0xFF);
-//    Wire.write(data >> 8);
-//    Wire.write(data);
-//    Wire.endTransmission();
-//}
-void FDC2212::write16FDC(uint16_t address, uint16_t value) {
-	uint8_t aTxBuffer[2] = { (uint8_t)(value >> 8), (uint8_t)(value & 0xFF) };
-    /*
-	if (c(&this->instance->_i2cHandle, this->instance->_i2caddr, address, I2C_MEMADD_SIZE_8BIT, aTxBuffer, 2, 10000) != HAL_OK) {
-		if (HAL_I2C_GetError(&this->instance->_i2cHandle) != HAL_I2C_ERROR_AF) {
-			Error_Handler();
-		}
-	}
-    */
-
-
-
-    esp_err_t err = this->i2c_example_master_write_slave(I2C_EXAMPLE_MASTER_NUM, aTxBuffer, 2);
-    if(err != ESP_OK)
-        Serial.println("Error in write16FDC.");
-}
 
 void FDC2212::shouldRead() {
 	this->shouldread = true;
 }
-
-
-
-
-/**
- * @brief test code to read esp-i2c-slave
- *        We need to fill the buffer of esp slave device, then master can read them out.
- *
- * _______________________________________________________________________________________
- * | start | slave_addr + rd_bit +ack | read n-1 bytes + ack | read 1 byte + nack | stop |
- * --------|--------------------------|----------------------|--------------------|------|
- *
- */
-esp_err_t FDC2212::i2c_example_master_read_slave(i2c_port_t i2c_num, uint16_t address, uint8_t* data_rd, size_t size)
-{
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, BH1750_SENSOR_ADDR << 1 | READ_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, address, ACK_CHECK_EN);
-    i2c_master_read_byte(cmd, data_rd, I2C_MASTER_ACK);
-    i2c_master_read_byte(cmd, data_rd++, I2C_MASTER_NACK);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-return ret;
-}
-
-
-/**
- * @brief Test code to write esp-i2c-slave
- *        Master device write data to slave(both esp32),
- *        the data will be stored in slave buffer.
- *        We can read them out from slave buffer.
- *
- * ___________________________________________________________________
- * | start | slave_addr + wr_bit + ack | write n bytes + ack  | stop |
- * --------|---------------------------|----------------------|------|
- *
- */
-esp_err_t FDC2212::i2c_example_master_write_slave(i2c_port_t i2c_num, uint8_t* data_wr, size_t size)
-{
-    esp_err_t ret;
-    i2c_cmd_handle_t cmd = i2c_cmd_link_create();
-    i2c_master_start(cmd);
-    i2c_master_write_byte(cmd, BH1750_SENSOR_ADDR << 1 | WRITE_BIT, ACK_CHECK_EN);
-    i2c_master_write_byte(cmd, BH1750_CMD_START, ACK_CHECK_EN);
-    i2c_master_stop(cmd);
-    ret = i2c_master_cmd_begin(i2c_num, cmd, 1000 / portTICK_RATE_MS);
-    i2c_cmd_link_delete(cmd);
-    return ret;
-}
-

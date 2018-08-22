@@ -12,10 +12,13 @@
 #include <stdint.h>
 
 #include "TaskCore0.h"
-#include "I2CTask.h"
+//#include "I2CTask.h"
 
 #include <Preferences.h>
 #include "nvs_flash.h"
+//#include "NelsonsLog_FDC2214.h"
+
+#include "FDC2212.h"
 
 String ssid;
 String password;
@@ -93,7 +96,7 @@ volatile int16_t encoder2_value;
 //Ticker jsonReporter;
 TaskHandle_t TaskA;
 TaskHandle_t reportJsonTask;
-TaskHandle_t i2cTask;
+//TaskHandle_t i2cTask;
 
 volatile double output1, output2;
 volatile double target1, target2;
@@ -119,6 +122,11 @@ String previousPercent_str_2;
 long searchTopMilis;
 
 int16_t deltaSearch = 2000;
+
+
+FDC2212 fdc2212;
+
+int32_t cap_reading=0;
 
 void listDir(fs::FS &fs, const char * dirname, uint8_t levels){
     Serial.printf("Listing directory: %s\r\n", dirname);
@@ -523,9 +531,14 @@ void processWsData(char *data, AsyncWebSocketClient* client)
     preferences.end();
 
     printf("wificonnect ssid: %s, password: %s\n", ssid.c_str(), password.c_str());
+    ws.textAll("MLIFT restart.");
+    ws.closeAll();
+    esp_restart();
+    /*
     WiFi.mode(WIFI_STA);
     WiFi.begin(ssid.c_str(), password.c_str());
     waitForIp();
+    */
   }else if(input.startsWith("pwm_m1_left")){
     shouldStopM1 = 0;
     shouldPwm_M1_left = 1;
@@ -593,8 +606,10 @@ void processWsData(char *data, AsyncWebSocketClient* client)
       setOutputPercent(previousPercent_str_1,2);
     }
   }else if(input.startsWith("scan")){
-    printf("scan");
-    client->printf(scanNetworks().c_str());
+    printf("scan...\n");
+    String scannedNetworks = scanNetworks();
+    printf("%s\n", scannedNetworks.c_str());
+    client->printf(scannedNetworks.c_str());
   }
 }
 
@@ -709,7 +724,7 @@ void waitForIp()
 
   while (WiFi.status() != WL_CONNECTED) {
 
-    delay(1000);
+    vTaskDelay(1000 / portTICK_PERIOD_MS);
     Serial.print("SSID: ");
     Serial.println(ssid);
     Serial.print("password: ");
@@ -735,9 +750,9 @@ void blink(int i){
   for(int j=0; j<i; j++)
   {
     digitalWrite(LED_PIN, HIGH);
-    usleep(50000);
+    vTaskDelay(50 / portTICK_PERIOD_MS);
     digitalWrite(LED_PIN, LOW);
-    usleep(40000);
+    vTaskDelay(50 / portTICK_PERIOD_MS);
   }
 }
 
@@ -935,7 +950,7 @@ void setup()
 
     //jsonReporter.detach();
     vTaskSuspend(reportJsonTask);
-    vTaskSuspend(i2cTask);
+    //vTaskSuspend(i2cTask);
     //mover.detach();
 
     // Disable client connections    
@@ -958,15 +973,17 @@ void setup()
                     &reportJsonTask,             // Task handle.
                     1);                          // core number  
   
+  
+  /*
   xTaskCreatePinnedToCore(
                     i2cTask_func,                // Task function. 
                     "i2cTask",                   // String with name of task. 
-                    10000,                       // Stack size in words. 
+                    30000,                       // Stack size in words. 
                     NULL,                        // Parameter passed as input of the task 
                     tskIDLE_PRIORITY,            // Priority of the task.
                     &i2cTask,                    // Task handle.
                     1);                          // core number 
-
+*/
   rotaryEncoder1.setBoundaries(-10000, 10000, false);
   rotaryEncoder2.setBoundaries(-10000, 10000, false);
 
@@ -1024,13 +1041,27 @@ void setup()
   Serial.println("Gate driver ON...Done.");
 
   //mover.attach_ms(10, move);
-    
+
+	Serial.println("Setting up FDC2212...");
+	fdc2212 = FDC2212();
+  fdc2212.begin();
+	Serial.println("Setting up FDC2212...Done.");
+
   blink(5);
 
 }
 
+long i;
 void loop(){
+  i++;
   ArduinoOTA.handle();
+
+
+  if(i % 10000 == 0)
+  {
+    //cap_reading = fdc2212.getReading();
+  }
+  //Serial.printf("FDC2212 read: %lu\n", result);
   vTaskDelay(20 / portTICK_PERIOD_MS);
 }
 
@@ -1203,6 +1234,10 @@ IRAM_ATTR void reportJson(void *pvParameters)
       txtToSend.concat(stop2_bottom);
       txtToSend.concat(",");    
 
+      txtToSend.concat("\"cap_reading\":");
+      txtToSend.concat(cap_reading);
+      txtToSend.concat(",");  
+
       txtToSend.concat("\"esp32_heap\":");
       txtToSend.concat(ESP.getFreeHeap());
       txtToSend.concat("}");
@@ -1249,7 +1284,7 @@ IRAM_ATTR void reportJson(void *pvParameters)
       
     }
     //Serial.println("reportjson4");
-    vTaskDelay(250 / portTICK_PERIOD_MS);
+    vTaskDelay(100 / portTICK_PERIOD_MS);
     //Serial.println("reportjson5");
   }
 }
